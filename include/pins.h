@@ -18,4 +18,10 @@ constexpr int PA_EN = 21;
 constexpr int KEY1 = 36;
 constexpr int KEY3 = 19;
 
+constexpr int OLED_SCK = 18;
+constexpr int OLED_MOSI = 23;
+constexpr int OLED_CS = 5;
+constexpr int OLED_DC = 22;
+constexpr int OLED_RES = 21;
+
 }  // namespace Pins
