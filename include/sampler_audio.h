@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 class SamplerAudio {
  public:
   SamplerAudio() = default;
@@ -7,7 +9,7 @@ class SamplerAudio {
 
   void begin();
   void update();
-  void playSample(int sampleNumber);
+  void playSamplePath(const String &samplePath);
 
  private:
   void resetI2SIfNeeded();

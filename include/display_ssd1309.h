@@ -1,10 +1,11 @@
 #pragma once
 
+#include <Arduino.h>
+
 class DisplaySsd1309 {
  public:
   bool begin();
-  void setBootStatus(bool sdOk, bool codecOk);
-  void setLastSample(int sampleNumber);
+  void setSampleSelection(int currentSampleNumber, int totalSamples, const String &sampleName);
   void update();
 
  private:
@@ -12,7 +13,7 @@ class DisplaySsd1309 {
 
   bool ready_ = false;
   bool dirty_ = true;
-  bool sdOk_ = false;
-  bool codecOk_ = false;
-  int lastSample_ = 0;
+  int currentSampleNumber_ = 0;
+  int totalSamples_ = 0;
+  String currentSampleName_ = "-";
 };

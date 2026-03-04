@@ -1,8 +1,10 @@
 #include <Arduino.h>
+#include <SD.h>
 
 #include "codec_es8388.h"
 #include "display_ssd1309.h"
 #include "input_keys.h"
+#include "pins.h"
 #include "sampler_audio.h"
 #include "storage_sd.h"
 
@@ -22,11 +24,75 @@ AppContext gContext = {
     &gDisplay,
 };
 
+constexpr int kMaxSamples = 32;
+String gSamplePaths[kMaxSamples];
+String gSampleNames[kMaxSamples];
+int gSampleCount = 0;
+int gCurrentSampleIndex = 0;
+
+bool isWavFile(const String &name) {
+  return name.endsWith(".wav") || name.endsWith(".WAV");
+}
+
+void sortSamplesByName() {
+  for (int i = 0; i < gSampleCount - 1; i++) {
+    for (int j = i + 1; j < gSampleCount; j++) {
+      if (gSampleNames[j] < gSampleNames[i]) {
+        String n = gSampleNames[i];
+        String p = gSamplePaths[i];
+        gSampleNames[i] = gSampleNames[j];
+        gSamplePaths[i] = gSamplePaths[j];
+        gSampleNames[j] = n;
+        gSamplePaths[j] = p;
+      }
+    }
+  }
+}
+
+void loadSamplesFromSd() {
+  gSampleCount = 0;
+  gCurrentSampleIndex = 0;
+
+  File dir = SD.open("/samples");
+  if (!dir || !dir.isDirectory()) {
+    Serial.println("Missing /samples directory");
+    return;
+  }
+
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) break;
+
+    if (!entry.isDirectory()) {
+      String entryName = entry.name();
+      int slash = entryName.lastIndexOf('/');
+      String fileName = (slash >= 0) ? entryName.substring(slash + 1) : entryName;
+      if (isWavFile(fileName) && gSampleCount < kMaxSamples) {
+        gSamplePaths[gSampleCount] = "/samples/" + fileName;
+        gSampleNames[gSampleCount] = fileName;
+        gSampleCount++;
+      }
+    }
+    entry.close();
+  }
+  dir.close();
+
+  sortSamplesByName();
+  Serial.printf("Found %d sample(s)\n", gSampleCount);
+}
+
 void onKeyPressed(int keyIndex, void *context) {
   auto *app = static_cast<AppContext *>(context);
-  int sampleNumber = keyIndex + 1;
-  app->audio->playSample(sampleNumber);
-  app->display->setLastSample(sampleNumber);
+  if (gSampleCount <= 0) return;
+
+  if (keyIndex == 0) {  // KEY1: play current sample
+    app->audio->playSamplePath(gSamplePaths[gCurrentSampleIndex]);
+  } else if (keyIndex == 1) {  // KEY3: select next sample
+    gCurrentSampleIndex = (gCurrentSampleIndex + 1) % gSampleCount;
+    app->display->setSampleSelection(
+        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
+    Serial.printf("Selected sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
+  }
 }
 
 }  // namespace
@@ -34,16 +100,14 @@ void onKeyPressed(int keyIndex, void *context) {
 void setup() {
   Serial.begin(115200);
   delay(200);
-
   gKeys.begin();
 
-  bool sdOk = StorageSD::init();
-  if (!sdOk) {
+  if (!StorageSD::init()) {
     while (true) delay(1000);
   }
+  loadSamplesFromSd();
 
-  bool codecOk = CodecES8388::init();
-  if (!codecOk) {
+  if (!CodecES8388::init()) {
     Serial.println("Codec init failed");
   } else {
     Serial.println("Codec OK");
@@ -54,7 +118,12 @@ void setup() {
   } else {
     Serial.println("Display OK");
   }
-  gDisplay.setBootStatus(sdOk, codecOk);
+  if (gSampleCount > 0) {
+    gDisplay.setSampleSelection(
+        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
+  } else {
+    gDisplay.setSampleSelection(0, 0, "no samples");
+  }
 
   gAudio.begin();
   Serial.println("Sampler ready");

@@ -42,9 +42,8 @@ void SamplerAudio::update() {
   }
 }
 
-void SamplerAudio::playSample(int sampleNumber) {
-  String path = "/samples/test" + String(sampleNumber) + ".wav";
-  Serial.println(path);
+void SamplerAudio::playSamplePath(const String &samplePath) {
+  Serial.println(samplePath);
 
   if (wav_ && wav_->isRunning()) {
     wav_->stop();
@@ -56,7 +55,7 @@ void SamplerAudio::playSample(int sampleNumber) {
     file_ = nullptr;
   }
 
-  file_ = new AudioFileSourceSD(path.c_str());
+  file_ = new AudioFileSourceSD(samplePath.c_str());
   if (wav_ && file_ && file_->isOpen()) {
     resetI2SIfNeeded();
     if (!wav_->begin(file_, out_)) {
