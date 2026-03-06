@@ -105,7 +105,7 @@ void Input::begin() {
   ready_ = true;
 }
 
-void Input::update(OnPressCallback callback, void *context) {
+void Input::update(OnEventCallback callback, void *context) {
   if (!ready_) return;
   static unsigned long lastPollMs = 0;
   const unsigned long now = millis();
@@ -125,11 +125,23 @@ void Input::update(OnPressCallback callback, void *context) {
       if (encoderTicks_[i] >= kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
         Serial.printf("ENC%d CW\n", i + 1);
-        if (callback) callback(1, context);  // next sample
+        if (callback) {
+          const Event event = {
+              (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
+              1,
+          };
+          callback(event, context);
+        }
       } else if (encoderTicks_[i] <= -kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
         Serial.printf("ENC%d CCW\n", i + 1);
-        if (callback) callback(2, context);  // previous sample
+        if (callback) {
+          const Event event = {
+              (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
+              -1,
+          };
+          callback(event, context);
+        }
       }
     }
     encoderState_[i] = currentEncoderState;
@@ -144,8 +156,25 @@ void Input::update(OnPressCallback callback, void *context) {
         switchRaw != switchStableState_[i]) {
       switchStableState_[i] = switchRaw;
       Serial.printf("ENC%d %s\n", i + 1, (switchStableState_[i] == LOW) ? "PRESS" : "RELEASE");
-      if (switchStableState_[i] == LOW && callback) {
-        callback(0, context);  // play current sample
+      if (switchStableState_[i] == LOW) {
+        switchPressStartMs_[i] = now;
+        longPressFired_[i] = false;
+      } else if (callback && !longPressFired_[i]) {
+        const Event event = {
+            (i == 0) ? EventType::LeftClick : EventType::RightClick,
+            0,
+        };
+        callback(event, context);
+      }
+    }
+
+    if (i == 1 && switchStableState_[i] == LOW && !longPressFired_[i] &&
+        (now - switchPressStartMs_[i]) >= kLongPressMs) {
+      longPressFired_[i] = true;
+      Serial.println("ENC2 LONG_PRESS");
+      if (callback) {
+        const Event event = {EventType::RightLongPress, 0};
+        callback(event, context);
       }
     }
   }

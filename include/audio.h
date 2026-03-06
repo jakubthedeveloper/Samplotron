@@ -2,10 +2,10 @@
 
 #include <Arduino.h>
 
-class SamplerAudio {
+class Audio {
  public:
-  SamplerAudio() = default;
-  ~SamplerAudio();
+  Audio() = default;
+  ~Audio();
 
   void begin();
   void update();

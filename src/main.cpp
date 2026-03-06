@@ -5,30 +5,21 @@
 #include "display_ssd1309.h"
 #include "input.h"
 #include "pins.h"
-#include "sampler_audio.h"
+#include "audio.h"
+#include "ui.h"
 #include "storage_sd.h"
 
 namespace {
 
-SamplerAudio gAudio;
-Input gKeys;
+Audio gAudio;
+Input gInput;
+Ui gUi;
 DisplaySsd1309 gDisplay;
 
-struct AppContext {
-  SamplerAudio *audio;
-  DisplaySsd1309 *display;
-};
-
-AppContext gContext = {
-    &gAudio,
-    &gDisplay,
-};
-
-constexpr int kMaxSamples = 32;
+constexpr int kMaxSamples = Ui::kMaxSamples;
 String gSamplePaths[kMaxSamples];
 String gSampleNames[kMaxSamples];
 int gSampleCount = 0;
-int gCurrentSampleIndex = 0;
 
 bool isWavFile(const String &name) {
   return name.endsWith(".wav") || name.endsWith(".WAV");
@@ -51,7 +42,6 @@ void sortSamplesByName() {
 
 void loadSamplesFromSd() {
   gSampleCount = 0;
-  gCurrentSampleIndex = 0;
 
   File dir = SD.open("/samples");
   if (!dir || !dir.isDirectory()) {
@@ -81,24 +71,35 @@ void loadSamplesFromSd() {
   Serial.printf("Found %d sample(s)\n", gSampleCount);
 }
 
-void onKeyPressed(int keyIndex, void *context) {
-  auto *app = static_cast<AppContext *>(context);
-  if (gSampleCount <= 0) return;
+void onPreviewSample(int sampleIndex, void * /*context*/) {
+  if (sampleIndex < 0 || sampleIndex >= gSampleCount) return;
+  Serial.printf("PLAY sample: %s\n", gSampleNames[sampleIndex].c_str());
+  gAudio.playSamplePath(gSamplePaths[sampleIndex]);
+}
 
-  if (keyIndex == 0) {  // Encoder switch: play current sample
-    Serial.printf("PLAY sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
-    app->audio->playSamplePath(gSamplePaths[gCurrentSampleIndex]);
-  } else if (keyIndex == 1) {  // Encoder CW: select next sample
-    gCurrentSampleIndex = (gCurrentSampleIndex + 1) % gSampleCount;
-    app->display->setSampleSelection(
-        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
-    Serial.printf("Selected sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
-  } else if (keyIndex == 2) {  // Encoder CCW: select previous sample
-    gCurrentSampleIndex = (gCurrentSampleIndex + gSampleCount - 1) % gSampleCount;
-    app->display->setSampleSelection(
-        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
-    Serial.printf("Selected sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
+void onInputEvent(const Input::Event &event, void * /*context*/) {
+  Ui::Event uiEvent;
+  uiEvent.value = event.value;
+
+  switch (event.type) {
+    case Input::EventType::LeftRotate:
+      uiEvent.type = Ui::EventType::LeftRotate;
+      break;
+    case Input::EventType::LeftClick:
+      uiEvent.type = Ui::EventType::LeftClick;
+      break;
+    case Input::EventType::RightRotate:
+      uiEvent.type = Ui::EventType::RightRotate;
+      break;
+    case Input::EventType::RightClick:
+      uiEvent.type = Ui::EventType::RightClick;
+      break;
+    case Input::EventType::RightLongPress:
+      uiEvent.type = Ui::EventType::RightLongPress;
+      break;
   }
+
+  gUi.handleEvent(uiEvent);
 }
 
 }  // namespace
@@ -114,7 +115,6 @@ void setup() {
   } else {
     Serial.println("Continuing without SD (input/display debug still active).");
     gSampleCount = 0;
-    gCurrentSampleIndex = 0;
   }
 
   if (!CodecES8388::init()) {
@@ -128,20 +128,19 @@ void setup() {
   } else {
     Serial.println("Display OK");
   }
-  if (gSampleCount > 0) {
-    gDisplay.setSampleSelection(
-        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
-  } else {
-    gDisplay.setSampleSelection(0, 0, "no samples");
-  }
 
-  gKeys.begin();
+  gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
+  gUi.setPreviewCallback(onPreviewSample, nullptr);
+  gDisplay.renderUi(gUi);
+
+  gInput.begin();
   gAudio.begin();
   Serial.println("Sampler ready");
 }
 
 void loop() {
   gAudio.update();
-  gKeys.update(onKeyPressed, &gContext);
+  gInput.update(onInputEvent, nullptr);
+  gUi.update();
   gDisplay.update();
 }

@@ -1,0 +1,303 @@
+{
+  "project": "ESP32 Sampler UI",
+  "version": "1.0",
+  "display": {
+    "type": "OLED",
+    "resolution": {
+      "width": 128,
+      "height": 64
+    },
+    "selection_style": "inverted_colors",
+    "help_bar": {
+      "enabled": true,
+      "description": "Each screen shows what LEFT and RIGHT encoder actions do."
+    }
+  },
+  "inputs": {
+    "left_encoder": {
+      "supports": [
+        "rotate",
+        "click"
+      ],
+      "default_role": {
+        "rotate": "navigate_or_change_selection",
+        "click": "back_or_cancel"
+      }
+    },
+    "right_encoder": {
+      "supports": [
+        "rotate",
+        "click",
+        "long_press"
+      ],
+      "default_role": {
+        "rotate": "adjust_value_or_browse",
+        "click": "action_or_confirm",
+        "long_press": "special_action"
+      }
+    }
+  },
+  "global_rules": {
+    "left_click_behavior": "Always back/cancel where applicable.",
+    "right_click_behavior": "Enter/confirm/play depending on screen.",
+    "selected_element_visualization": {
+      "type": "invert",
+      "ascii_example": " LIB   █VOL█   PITCH   SAVE "
+    }
+  },
+  "data_model": {
+    "last_triggered_sample": {
+      "fields": [
+        "sample_index",
+        "sample_name",
+        "midi_note_number",
+        "midi_note_name"
+      ]
+    },
+    "sample_settings": {
+      "per_sample": [
+        "volume",
+        "pitch"
+      ]
+    },
+    "midi_assignment": {
+      "description": "Mapping of MIDI note number to sample index",
+      "recommended_structure": "sample_for_note[128]"
+    },
+    "storage": {
+      "preferred_backend": "ESP32_NVS",
+      "save_contains": [
+        "midi_note_to_sample_mapping",
+        "sample_volume",
+        "sample_pitch"
+      ]
+    }
+  },
+  "events": {
+    "encoder_left_rotate": "ENCODER_LEFT_ROTATE",
+    "encoder_left_click": "ENCODER_LEFT_CLICK",
+    "encoder_right_rotate": "ENCODER_RIGHT_ROTATE",
+    "encoder_right_click": "ENCODER_RIGHT_CLICK",
+    "encoder_right_long_press": "ENCODER_RIGHT_LONG_PRESS",
+    "midi_note_on": "MIDI_NOTE_ON",
+    "save_completed": "SAVE_COMPLETED"
+  },
+  "state_machine": {
+    "initial_state": "MAIN",
+    "states": {
+      "MAIN": {
+        "purpose": "Show last triggered sample, last MIDI note, and allow access to core actions.",
+        "layout": {
+          "fields": [
+            "last_sample_index",
+            "last_sample_name",
+            "last_midi_note_name",
+            "last_midi_note_number",
+            "current_sample_volume",
+            "current_sample_pitch"
+          ],
+          "menu_items": [
+            "LIB",
+            "VOL",
+            "PITCH",
+            "SAVE"
+          ],
+          "help_bar": [
+            "L: select",
+            "R: enter/adjust"
+          ]
+        },
+        "selection": {
+          "controlled_by": "ENCODER_LEFT_ROTATE",
+          "items": [
+            "LIB",
+            "VOL",
+            "PITCH",
+            "SAVE"
+          ],
+          "wrap": true
+        },
+        "actions": {
+          "LIB": {
+            "on_right_click": {
+              "transition_to": "LIBRARY"
+            }
+          },
+          "VOL": {
+            "on_right_rotate": {
+              "type": "adjust_parameter",
+              "parameter": "volume",
+              "range": {
+                "min": 0,
+                "max": 127
+              },
+              "target": "current_sample"
+            }
+          },
+          "PITCH": {
+            "on_right_rotate": {
+              "type": "adjust_parameter",
+              "parameter": "pitch",
+              "range": {
+                "min": -12,
+                "max": 12
+              },
+              "target": "current_sample",
+              "note": "Exact range may be implementation dependent."
+            }
+          },
+          "SAVE": {
+            "on_right_click": {
+              "transition_to": "SAVING"
+            }
+          }
+        }
+      },
+      "LIBRARY": {
+        "purpose": "Browse samples, preview them, and enter MIDI note assignment mode.",
+        "layout": {
+          "fields": [
+            "library_title",
+            "sample_list_window",
+            "selected_sample_index",
+            "selected_sample_name",
+            "assigned_midi_note_name",
+            "assigned_midi_note_number"
+          ],
+          "help_bar": [
+            "L: back        R: browse",
+            "R click: play  R hold: assign"
+          ]
+        },
+        "actions": {
+          "on_left_click": {
+            "transition_to": "MAIN"
+          },
+          "on_right_rotate": {
+            "type": "browse_samples",
+            "target": "selected_sample"
+          },
+          "on_right_click": {
+            "type": "preview_sample",
+            "target": "selected_sample"
+          },
+          "on_right_long_press": {
+            "transition_to": "ASSIGN_NOTE"
+          }
+        }
+      },
+      "ASSIGN_NOTE": {
+        "purpose": "Wait for incoming MIDI NOTE ON and assign it to the currently selected sample.",
+        "layout": {
+          "fields": [
+            "assign_title",
+            "selected_sample_index",
+            "selected_sample_name",
+            "current_assigned_note_name",
+            "current_assigned_note_number",
+            "waiting_for_midi_message"
+          ],
+          "help_bar": [
+            "L click: cancel",
+            "Waiting for MIDI..."
+          ],
+          "main_prompt": "Play note to assign"
+        },
+        "actions": {
+          "on_left_click": {
+            "type": "cancel_assignment",
+            "transition_to": "LIBRARY"
+          },
+          "on_midi_note_on": {
+            "type": "assign_selected_sample_to_received_note",
+            "payload": [
+              "note_number"
+            ],
+            "transition_to": "LIBRARY"
+          }
+        }
+      },
+      "SAVING": {
+        "purpose": "Persist sampler configuration.",
+        "layout": {
+          "fields": [
+            "saving_title",
+            "saving_message"
+          ],
+          "help_bar": [
+            "No encoder action during save"
+          ]
+        },
+        "actions": {
+          "on_enter": {
+            "type": "save_configuration",
+            "storage": "ESP32_NVS",
+            "save_items": [
+              "midi_note_to_sample_mapping",
+              "sample_volume",
+              "sample_pitch"
+            ]
+          },
+          "on_save_completed": {
+            "transition_to": "MAIN",
+            "optional_feedback": {
+              "message": "Saved",
+              "duration_ms": 1000
+            }
+          }
+        }
+      }
+    }
+  },
+  "screen_examples": {
+    "main_ascii": [
+      "┌──────────────────────────────┐",
+      "│ Last sample: 023  snare.wav │",
+      "│ Last MIDI:   D2 (38)        │",
+      "│                              │",
+      "│ Vol:   92                    │",
+      "│ Pitch: -03                   │",
+      "│                              │",
+      "│  █LIB█   VOL   PITCH   SAVE  │",
+      "│                              │",
+      "│ L: select      R: enter/adj  │",
+      "└──────────────────────────────┘"
+    ],
+    "library_ascii": [
+      "┌──────────────────────────────┐",
+      "│ LIBRARY                      │",
+      "│                              │",
+      "│ > 017  kick.wav              │",
+      "│   018  snare.wav             │",
+      "│   019  hat.wav               │",
+      "│                              │",
+      "│ Assigned: D2 (38)            │",
+      "│                              │",
+      "│ L: back        R: browse     │",
+      "│ R click: play  R hold: assign│",
+      "└──────────────────────────────┘"
+    ],
+    "assign_ascii": [
+      "┌──────────────────────────────┐",
+      "│ ASSIGN NOTE                  │",
+      "│                              │",
+      "│ Sample: 017  kick.wav        │",
+      "│                              │",
+      "│ Play note to assign          │",
+      "│                              │",
+      "│ Current: D2 (38)             │",
+      "│                              │",
+      "│ L click: cancel              │",
+      "│ Waiting for MIDI...          │",
+      "└──────────────────────────────┘"
+    ]
+  },
+  "implementation_notes": [
+    "Keep the UI minimal and optimized for live performance.",
+    "The MAIN screen should always show the last played sample and the last received MIDI note.",
+    "Volume and pitch are edited for the relevant current/selected sample.",
+    "Preview in LIBRARY should play the selected sample without changing mapping.",
+    "ASSIGN_NOTE should only commit the new mapping after receiving a MIDI NOTE ON event.",
+    "Left encoder click should remain a consistent back/cancel gesture across screens."
+  ]
+}

@@ -1,4 +1,4 @@
-#include "sampler_audio.h"
+#include "audio.h"
 
 #include <Arduino.h>
 #include "driver/i2s.h"
@@ -9,7 +9,7 @@
 
 #include "pins.h"
 
-SamplerAudio::~SamplerAudio() {
+Audio::~Audio() {
   if (wav_ && wav_->isRunning()) {
     wav_->stop();
   }
@@ -25,7 +25,7 @@ SamplerAudio::~SamplerAudio() {
   resetI2SIfNeeded();
 }
 
-void SamplerAudio::begin() {
+void Audio::begin() {
   out_ = new AudioOutputI2S(0, AudioOutputI2S::EXTERNAL_I2S, 8, AudioOutputI2S::APLL_ENABLE);
   out_->SetPinout(Pins::I2S_BCLK, Pins::I2S_LRC, Pins::I2S_DOUT);
   out_->SetGain(1.0f);
@@ -33,7 +33,7 @@ void SamplerAudio::begin() {
   wav_ = new AudioGeneratorWAV();
 }
 
-void SamplerAudio::update() {
+void Audio::update() {
   if (wav_ && wav_->isRunning()) {
     if (!wav_->loop()) {
       wav_->stop();
@@ -42,7 +42,7 @@ void SamplerAudio::update() {
   }
 }
 
-void SamplerAudio::playSamplePath(const String &samplePath) {
+void Audio::playSamplePath(const String &samplePath) {
   Serial.println(samplePath);
 
   if (wav_ && wav_->isRunning()) {
@@ -69,7 +69,7 @@ void SamplerAudio::playSamplePath(const String &samplePath) {
   }
 }
 
-void SamplerAudio::resetI2SIfNeeded() {
+void Audio::resetI2SIfNeeded() {
   if (!i2sWasStarted_) return;
 
   esp_err_t err = i2s_driver_uninstall((i2s_port_t)0);

@@ -46,38 +46,181 @@ bool DisplaySsd1309::begin() {
   }
 
   ready_ = true;
-  dirty_ = true;
-  render();
+  dirty_ = false;
   return true;
 }
 
-void DisplaySsd1309::setSampleSelection(int currentSampleNumber, int totalSamples, const String &sampleName) {
-  currentSampleNumber_ = currentSampleNumber;
-  totalSamples_ = totalSamples;
-  currentSampleName_ = sampleName;
+void DisplaySsd1309::renderUi(Ui &ui) {
+  ui_ = &ui;
   dirty_ = true;
 }
 
 void DisplaySsd1309::update() {
-  if (!ready_ || !dirty_) return;
-  render();
-}
+  if (!ready_ || !ui_) return;
 
-void DisplaySsd1309::render() {
-  if (!ready_) return;
+  if (!ui_->consumeDirty() && !dirty_) return;
+  const Ui::RenderModel &model = ui_->model();
 
   gDisplay.clearBuffer();
-
-  gDisplay.setFont(u8g2_font_9x15_tf);
-  gDisplay.drawStr(0, 14, "Samplotron");
-
-  gDisplay.setFont(u8g2_font_6x12_tf);
-  char header[24];
-  snprintf(header, sizeof(header), "Sample %d/%d", currentSampleNumber_, totalSamples_);
-  gDisplay.drawStr(0, 46, header);
-
-  gDisplay.drawStr(0, 60, currentSampleName_.c_str());
-
+  switch (model.state) {
+    case Ui::State::Main:
+      renderMain(model, *ui_);
+      break;
+    case Ui::State::Library:
+      renderLibrary(model, *ui_);
+      break;
+    case Ui::State::AssignNote:
+      renderAssign(model, *ui_);
+      break;
+    case Ui::State::Saving:
+      renderSaving();
+      break;
+  }
   gDisplay.sendBuffer();
   dirty_ = false;
+}
+
+String DisplaySsd1309::midiNoteLabel(int note) {
+  static const char *kNotes[12] = {"C",  "C#", "D",  "D#", "E", "F",
+                                   "F#", "G",  "G#", "A",  "A#", "B"};
+  if (note < 0 || note > 127) return "--";
+  String label = kNotes[note % 12];
+  label += String((note / 12) - 1);
+  return label;
+}
+
+String DisplaySsd1309::sampleLabel(int sampleIndex, const String &sampleName) {
+  char prefix[8];
+  if (sampleIndex < 0) {
+    snprintf(prefix, sizeof(prefix), "---");
+  } else {
+    snprintf(prefix, sizeof(prefix), "%03d", sampleIndex + 1);
+  }
+  return String(prefix) + " " + sampleName;
+}
+
+void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
+  gDisplay.setFont(u8g2_font_5x8_tf);
+
+  String lastSample = "Last: ";
+  if (model.lastTriggeredSampleIndex >= 0) {
+    lastSample += sampleLabel(model.lastTriggeredSampleIndex, model.lastTriggeredSampleName);
+  } else {
+    lastSample += "---";
+  }
+  gDisplay.drawStr(0, 8, lastSample.c_str());
+
+  String midi = "MIDI: ";
+  if (model.lastMidiNote >= 0) {
+    midi += midiNoteLabel(model.lastMidiNote) + " (" + String(model.lastMidiNote) + ")";
+  } else {
+    midi += "--";
+  }
+  gDisplay.drawStr(0, 16, midi.c_str());
+
+  char volLine[24];
+  snprintf(volLine, sizeof(volLine), "Vol:%3d", model.currentVolume);
+  gDisplay.drawStr(0, 26, volLine);
+
+  char pitchLine[24];
+  snprintf(pitchLine, sizeof(pitchLine), "Pitch:%+3d", model.currentPitch);
+  gDisplay.drawStr(68, 26, pitchLine);
+
+  if (model.showSavedFeedback) {
+    gDisplay.drawStr(0, 36, "Saved");
+  }
+
+  static const char *kItems[4] = {"LIB", "VOL", "PITCH", "SAVE"};
+  const int y = 48;
+  const int itemW = 32;
+  for (int i = 0; i < 4; i++) {
+    const int x = i * itemW;
+    if (i == model.mainSelection) {
+      gDisplay.setDrawColor(1);
+      gDisplay.drawBox(x, y - 7, itemW, 9);
+      gDisplay.setDrawColor(0);
+      gDisplay.drawStr(x + 2, y, kItems[i]);
+      gDisplay.setDrawColor(1);
+    } else {
+      gDisplay.drawStr(x + 2, y, kItems[i]);
+    }
+  }
+
+  gDisplay.drawHLine(0, 54, 128);
+  gDisplay.drawStr(0, 62, "L:select   R:enter/adj");
+}
+
+void DisplaySsd1309::renderLibrary(const Ui::RenderModel &model, const Ui &ui) {
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  gDisplay.drawStr(0, 8, "LIBRARY");
+
+  const int start = model.libraryWindowStart;
+  for (int row = 0; row < 3; row++) {
+    const int sampleIndex = start + row;
+    const int y = 20 + row * 9;
+    if (sampleIndex >= model.sampleCount) break;
+
+    const bool selected = (sampleIndex == model.currentSampleIndex);
+    String line = (selected ? "> " : "  ");
+    line += sampleLabel(sampleIndex, ui.sampleNameAt(sampleIndex));
+    if (selected) {
+      gDisplay.drawBox(0, y - 7, 128, 9);
+      gDisplay.setDrawColor(0);
+      gDisplay.drawStr(0, y, line.c_str());
+      gDisplay.setDrawColor(1);
+    } else {
+      gDisplay.drawStr(0, y, line.c_str());
+    }
+  }
+
+  String assigned = "Assigned: ";
+  if (model.assignedNoteForSelectedSample >= 0) {
+    assigned += midiNoteLabel(model.assignedNoteForSelectedSample);
+    assigned += " (";
+    assigned += String(model.assignedNoteForSelectedSample);
+    assigned += ")";
+  } else {
+    assigned += "--";
+  }
+  gDisplay.drawStr(0, 47, assigned.c_str());
+
+  gDisplay.setFont(u8g2_font_4x6_tf);
+  gDisplay.drawStr(0, 57, "L: back        R: browse");
+  gDisplay.drawStr(0, 63, "R click: play  R hold: assign");
+}
+
+void DisplaySsd1309::renderAssign(const Ui::RenderModel &model, const Ui &ui) {
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  gDisplay.drawStr(0, 8, "ASSIGN NOTE");
+
+  String sample = "Sample: ";
+  if (model.currentSampleIndex >= 0) {
+    sample += sampleLabel(model.currentSampleIndex, ui.sampleNameAt(model.currentSampleIndex));
+  } else {
+    sample += "---";
+  }
+  gDisplay.drawStr(0, 20, sample.c_str());
+  gDisplay.drawStr(0, 31, "Play note to assign");
+
+  String current = "Current: ";
+  if (model.assignedNoteForSelectedSample >= 0) {
+    current += midiNoteLabel(model.assignedNoteForSelectedSample);
+    current += " (";
+    current += String(model.assignedNoteForSelectedSample);
+    current += ")";
+  } else {
+    current += "--";
+  }
+  gDisplay.drawStr(0, 42, current.c_str());
+
+  gDisplay.drawHLine(0, 54, 128);
+  gDisplay.drawStr(0, 62, "L:cancel  Waiting for MIDI...");
+}
+
+void DisplaySsd1309::renderSaving() {
+  gDisplay.setFont(u8g2_font_6x12_tf);
+  gDisplay.drawStr(0, 22, "SAVING...");
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  gDisplay.drawStr(0, 38, "Persisting configuration");
+  gDisplay.drawStr(0, 62, "No encoder action during save");
 }

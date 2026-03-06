@@ -2,18 +2,23 @@
 
 #include <Arduino.h>
 
+#include "ui.h"
+
 class DisplaySsd1309 {
  public:
   bool begin();
-  void setSampleSelection(int currentSampleNumber, int totalSamples, const String &sampleName);
+  void renderUi(Ui &ui);
   void update();
 
  private:
-  void render();
+  static String midiNoteLabel(int note);
+  static String sampleLabel(int sampleIndex, const String &sampleName);
+  void renderMain(const Ui::RenderModel &model, const Ui &ui);
+  void renderLibrary(const Ui::RenderModel &model, const Ui &ui);
+  void renderAssign(const Ui::RenderModel &model, const Ui &ui);
+  void renderSaving();
 
   bool ready_ = false;
-  bool dirty_ = true;
-  int currentSampleNumber_ = 0;
-  int totalSamples_ = 0;
-  String currentSampleName_ = "-";
+  bool dirty_ = false;
+  Ui *ui_ = nullptr;
 };
