@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-class InputKeys {
+class Input {
  public:
   using OnPressCallback = void (*)(int keyIndex, void *context);
 

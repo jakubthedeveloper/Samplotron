@@ -3,7 +3,7 @@
 
 #include "codec_es8388.h"
 #include "display_ssd1309.h"
-#include "input_keys.h"
+#include "input.h"
 #include "pins.h"
 #include "sampler_audio.h"
 #include "storage_sd.h"
@@ -11,7 +11,7 @@
 namespace {
 
 SamplerAudio gAudio;
-InputKeys gKeys;
+Input gKeys;
 DisplaySsd1309 gDisplay;
 
 struct AppContext {
@@ -86,6 +86,7 @@ void onKeyPressed(int keyIndex, void *context) {
   if (gSampleCount <= 0) return;
 
   if (keyIndex == 0) {  // Encoder switch: play current sample
+    Serial.printf("PLAY sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
     app->audio->playSamplePath(gSamplePaths[gCurrentSampleIndex]);
   } else if (keyIndex == 1) {  // Encoder CW: select next sample
     gCurrentSampleIndex = (gCurrentSampleIndex + 1) % gSampleCount;
@@ -105,11 +106,16 @@ void onKeyPressed(int keyIndex, void *context) {
 void setup() {
   Serial.begin(115200);
   delay(200);
+  Serial.println("Booting Samplotron...");
 
-  if (!StorageSD::init()) {
-    while (true) delay(1000);
+  const bool sdReady = StorageSD::init();
+  if (sdReady) {
+    loadSamplesFromSd();
+  } else {
+    Serial.println("Continuing without SD (input/display debug still active).");
+    gSampleCount = 0;
+    gCurrentSampleIndex = 0;
   }
-  loadSamplesFromSd();
 
   if (!CodecES8388::init()) {
     Serial.println("Codec init failed");

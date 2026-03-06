@@ -1,4 +1,4 @@
-#include "input_keys.h"
+#include "input.h"
 
 #include <Wire.h>
 
@@ -6,14 +6,11 @@
 
 namespace {
 
-TwoWire gMcpWire(1);
-
 constexpr uint8_t kRegIodirA = 0x00;
 constexpr uint8_t kRegGppuA = 0x0C;
 constexpr uint8_t kRegIntConA = 0x08;
 constexpr uint8_t kRegGpIntEnA = 0x04;
 constexpr uint8_t kRegIoCon = 0x0A;
-constexpr uint8_t kRegIntfA = 0x0E;
 constexpr uint8_t kRegGpioA = 0x12;
 
 constexpr int kNumEncoders = 2;
@@ -23,24 +20,24 @@ constexpr uint8_t kSwitchBits[kNumEncoders] = {2, 5};
 constexpr uint8_t kUsedInputMask = 0x3F;
 
 bool mcpWriteReg(uint8_t reg, uint8_t value) {
-  gMcpWire.beginTransmission(Pins::MCP_I2C_ADDR);
-  gMcpWire.write(reg);
-  gMcpWire.write(value);
-  return gMcpWire.endTransmission() == 0;
+  Wire.beginTransmission(Pins::MCP_I2C_ADDR);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
 }
 
 bool mcpReadReg(uint8_t reg, uint8_t &value) {
-  gMcpWire.beginTransmission(Pins::MCP_I2C_ADDR);
-  gMcpWire.write(reg);
-  if (gMcpWire.endTransmission(false) != 0) {
+  Wire.beginTransmission(Pins::MCP_I2C_ADDR);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
     return false;
   }
 
-  if (gMcpWire.requestFrom(static_cast<int>(Pins::MCP_I2C_ADDR), 1) != 1) {
+  if (Wire.requestFrom(static_cast<int>(Pins::MCP_I2C_ADDR), 1) != 1) {
     return false;
   }
 
-  value = gMcpWire.read();
+  value = Wire.read();
   return true;
 }
 
@@ -63,10 +60,10 @@ int8_t quadratureDelta(uint8_t prev, uint8_t current) {
 
 }  // namespace
 
-void InputKeys::begin() {
+void Input::begin() {
   pinMode(Pins::MCP_INTA, INPUT_PULLUP);
 
-  gMcpWire.begin(Pins::MCP_SDA, Pins::MCP_SCL, 400000U);
+  Wire.begin(Pins::MCP_SDA, Pins::MCP_SCL, 400000U);
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) {
@@ -108,12 +105,12 @@ void InputKeys::begin() {
   ready_ = true;
 }
 
-void InputKeys::update(OnPressCallback callback, void *context) {
+void Input::update(OnPressCallback callback, void *context) {
   if (!ready_) return;
-  if (digitalRead(Pins::MCP_INTA) == HIGH) return;
-
-  uint8_t intFlags = 0;
-  if (!mcpReadReg(kRegIntfA, intFlags) || intFlags == 0) return;
+  static unsigned long lastPollMs = 0;
+  const unsigned long now = millis();
+  if (now == lastPollMs) return;
+  lastPollMs = now;
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) return;
@@ -127,9 +124,11 @@ void InputKeys::update(OnPressCallback callback, void *context) {
       encoderTicks_[i] = static_cast<int8_t>(encoderTicks_[i] + delta);
       if (encoderTicks_[i] >= kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
+        Serial.printf("ENC%d CW\n", i + 1);
         if (callback) callback(1, context);  // next sample
       } else if (encoderTicks_[i] <= -kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
+        Serial.printf("ENC%d CCW\n", i + 1);
         if (callback) callback(2, context);  // previous sample
       }
     }
@@ -144,6 +143,7 @@ void InputKeys::update(OnPressCallback callback, void *context) {
     if ((millis() - switchLastDebounceMs_[i]) >= kDebounceMs &&
         switchRaw != switchStableState_[i]) {
       switchStableState_[i] = switchRaw;
+      Serial.printf("ENC%d %s\n", i + 1, (switchStableState_[i] == LOW) ? "PRESS" : "RELEASE");
       if (switchStableState_[i] == LOW && callback) {
         callback(0, context);  // play current sample
       }

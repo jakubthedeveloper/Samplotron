@@ -18,10 +18,10 @@ constexpr int PA_EN = 21;
 constexpr int OLED_SCK = 18;
 constexpr int OLED_MOSI = 23;
 
-constexpr int MCP_SDA = 22;
-constexpr int MCP_SCL = 19;
+constexpr int MCP_SDA = OLED_MOSI;
+constexpr int MCP_SCL = OLED_SCK;
 constexpr int MCP_INTA = 5;
 constexpr int MCP_INTB = 0;
-constexpr uint8_t MCP_I2C_ADDR = 0x20;
+constexpr uint8_t MCP_I2C_ADDR = 0x27;
 
 }  // namespace Pins

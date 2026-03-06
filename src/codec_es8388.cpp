@@ -8,20 +8,21 @@
 namespace {
 
 constexpr uint8_t ES8388_ADDR = 0x10;
+TwoWire gCodecWire(1);
 
 bool codecWrite(uint8_t reg, uint8_t val) {
-  Wire.beginTransmission(ES8388_ADDR);
-  Wire.write(reg);
-  Wire.write(val);
-  return Wire.endTransmission() == 0;
+  gCodecWire.beginTransmission(ES8388_ADDR);
+  gCodecWire.write(reg);
+  gCodecWire.write(val);
+  return gCodecWire.endTransmission() == 0;
 }
 
 bool codecRead(uint8_t reg, uint8_t &val) {
-  Wire.beginTransmission(ES8388_ADDR);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((uint8_t)ES8388_ADDR, (uint8_t)1) != 1) return false;
-  val = Wire.read();
+  gCodecWire.beginTransmission(ES8388_ADDR);
+  gCodecWire.write(reg);
+  if (gCodecWire.endTransmission(false) != 0) return false;
+  if (gCodecWire.requestFrom((uint8_t)ES8388_ADDR, (uint8_t)1) != 1) return false;
+  val = gCodecWire.read();
   return true;
 }
 
@@ -57,9 +58,9 @@ void unmuteOutputs() {
 namespace CodecES8388 {
 
 bool init() {
-  Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL, 400000U);
-  Wire.beginTransmission(ES8388_ADDR);
-  if (Wire.endTransmission() != 0) {
+  gCodecWire.begin(Pins::I2C_SDA, Pins::I2C_SCL, 400000U);
+  gCodecWire.beginTransmission(ES8388_ADDR);
+  if (gCodecWire.endTransmission() != 0) {
     Serial.println("ES8388 not found on I2C");
     return false;
   }
