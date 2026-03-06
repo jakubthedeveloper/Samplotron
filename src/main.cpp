@@ -85,10 +85,15 @@ void onKeyPressed(int keyIndex, void *context) {
   auto *app = static_cast<AppContext *>(context);
   if (gSampleCount <= 0) return;
 
-  if (keyIndex == 0) {  // KEY1: play current sample
+  if (keyIndex == 0) {  // Encoder switch: play current sample
     app->audio->playSamplePath(gSamplePaths[gCurrentSampleIndex]);
-  } else if (keyIndex == 1) {  // KEY3: select next sample
+  } else if (keyIndex == 1) {  // Encoder CW: select next sample
     gCurrentSampleIndex = (gCurrentSampleIndex + 1) % gSampleCount;
+    app->display->setSampleSelection(
+        gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
+    Serial.printf("Selected sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
+  } else if (keyIndex == 2) {  // Encoder CCW: select previous sample
+    gCurrentSampleIndex = (gCurrentSampleIndex + gSampleCount - 1) % gSampleCount;
     app->display->setSampleSelection(
         gCurrentSampleIndex + 1, gSampleCount, gSampleNames[gCurrentSampleIndex]);
     Serial.printf("Selected sample: %s\n", gSampleNames[gCurrentSampleIndex].c_str());
@@ -100,7 +105,6 @@ void onKeyPressed(int keyIndex, void *context) {
 void setup() {
   Serial.begin(115200);
   delay(200);
-  gKeys.begin();
 
   if (!StorageSD::init()) {
     while (true) delay(1000);
@@ -125,6 +129,7 @@ void setup() {
     gDisplay.setSampleSelection(0, 0, "no samples");
   }
 
+  gKeys.begin();
   gAudio.begin();
   Serial.println("Sampler ready");
 }

@@ -15,13 +15,13 @@ constexpr int I2C_SCL = 32;
 constexpr int I2C_SDA = 33;
 constexpr int PA_EN = 21;
 
-constexpr int KEY1 = 36;
-constexpr int KEY3 = 19;
-
 constexpr int OLED_SCK = 18;
 constexpr int OLED_MOSI = 23;
-constexpr int OLED_CS = 5;
-constexpr int OLED_DC = 22;
-constexpr int OLED_RES = 21;
+
+constexpr int MCP_SDA = 22;
+constexpr int MCP_SCL = 19;
+constexpr int MCP_INTA = 5;
+constexpr int MCP_INTB = 0;
+constexpr uint8_t MCP_I2C_ADDR = 0x20;
 
 }  // namespace Pins

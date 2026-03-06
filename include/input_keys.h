@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "pins.h"
-
 class InputKeys {
  public:
   using OnPressCallback = void (*)(int keyIndex, void *context);
@@ -14,11 +12,14 @@ class InputKeys {
   void update(OnPressCallback callback, void *context);
 
  private:
-  static constexpr int kNumKeys = 2;
+  static constexpr int kNumEncoders = 2;
   static constexpr uint8_t kDebounceMs = 35;
+  static constexpr int kEncoderDetentTicks = 4;
 
-  const int pins_[kNumKeys] = {Pins::KEY1, Pins::KEY3};
-  int lastReadState_[kNumKeys] = {HIGH, HIGH};
-  int stableState_[kNumKeys] = {HIGH, HIGH};
-  unsigned long lastDebounceMs_[kNumKeys] = {0, 0};
+  bool ready_ = false;
+  uint8_t encoderState_[kNumEncoders] = {0, 0};
+  int8_t encoderTicks_[kNumEncoders] = {0, 0};
+  int switchStableState_[kNumEncoders] = {HIGH, HIGH};
+  int switchLastReadState_[kNumEncoders] = {HIGH, HIGH};
+  unsigned long switchLastDebounceMs_[kNumEncoders] = {0, 0};
 };
