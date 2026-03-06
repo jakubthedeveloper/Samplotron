@@ -72,9 +72,3 @@ Build and upload:
 - `pio run -e esp-wrover-kit-debug-input -t upload`
 - `pio device monitor -b 115200`
 
-## TODO
-
-- MIDI: note on/off, velocity
-- Polyphony
-- External buttons for menu navigation
-- Screen menu
