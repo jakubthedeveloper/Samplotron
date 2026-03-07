@@ -42,6 +42,7 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
   libraryWindowStart_ = 0;
   state_ = State::Main;
   saveCompletedPending_ = false;
+  lastSaveSucceeded_ = true;
   saveFeedbackUntilMs_ = 0;
 
   markDirty();
@@ -52,6 +53,11 @@ void Ui::setPreviewCallback(OnPreviewSampleCallback callback, void *context) {
   previewContext_ = context;
 }
 
+void Ui::setSaveCallback(OnSaveCallback callback, void *context) {
+  onSave_ = callback;
+  saveContext_ = context;
+}
+
 void Ui::handleEvent(const Event &event) {
   if (state_ == State::Saving) {
     return;
@@ -60,7 +66,7 @@ void Ui::handleEvent(const Event &event) {
   if (event.type == EventType::MidiNoteOn) {
     lastMidiNote_ = clampValue(event.value, 0, 127);
     if (state_ == State::AssignNote) {
-      logNotImplemented("assign_selected_sample_to_received_note");
+      setMidiAssignment(lastMidiNote_, currentSampleIndex_);
       transitionTo(State::Library);
     } else {
       markDirty();
@@ -126,6 +132,19 @@ bool Ui::hasSamples() const {
   return sampleCount_ > 0;
 }
 
+bool Ui::setMidiAssignment(int note, int sampleIndex) {
+  if (note < 0 || note > 127) return false;
+  if (sampleIndex < -1 || sampleIndex >= sampleCount_) return false;
+  sampleForMidiNote_[note] = sampleIndex;
+  markDirty();
+  return true;
+}
+
+int Ui::assignedSampleForMidiNote(int note) const {
+  if (note < 0 || note > 127) return -1;
+  return sampleForMidiNote_[note];
+}
+
 void Ui::markDirty() {
   updateDerivedModel();
   model_.dirty = true;
@@ -143,6 +162,7 @@ void Ui::updateDerivedModel() {
   model_.libraryWindowStart = libraryWindowStart_;
   model_.assignedNoteForSelectedSample = findAssignedNoteForSample(currentSampleIndex_);
   model_.showSavedFeedback = (saveFeedbackUntilMs_ != 0);
+  model_.lastSaveSucceeded = lastSaveSucceeded_;
   if (currentSampleIndex_ >= 0 && currentSampleIndex_ < sampleCount_) {
     model_.currentVolume = sampleVolumes_[currentSampleIndex_];
     model_.currentPitch = samplePitches_[currentSampleIndex_];
@@ -235,7 +255,12 @@ void Ui::transitionTo(State state) {
 }
 
 void Ui::startSave() {
-  logNotImplemented("save_configuration");
+  if (!onSave_) {
+    logNotImplemented("save_configuration_callback_missing");
+    lastSaveSucceeded_ = false;
+  } else {
+    lastSaveSucceeded_ = onSave_(saveContext_);
+  }
   saveCompletedPending_ = true;
   markDirty();
 }

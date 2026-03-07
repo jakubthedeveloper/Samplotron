@@ -1,0 +1,499 @@
+{
+  "spec_version": "1.0",
+  "project": {
+    "name": "ESP32 Sampler",
+    "component": "sampling_engine",
+    "goal": "Implement a simple, stable v1 sampling engine optimized for real-world testing rather than maximum feature count.",
+    "design_principles": [
+      "Prefer deterministic behavior over aggressive optimization.",
+      "Avoid dynamic complexity in the audio path.",
+      "Separate audio, UI, and loading responsibilities.",
+      "Load only what is required for current MIDI assignments.",
+      "Collect useful runtime metrics for future iteration."
+    ]
+  },
+  "scope": {
+    "in_scope": [
+      "8-voice sample playback engine",
+      "oldest-voice stealing when all voices are occupied",
+      "sample memory policy: RAM for short assigned samples when budget allows, otherwise stream from SD",
+      "automatic loading of saved assignments/settings on boot",
+      "saved settings persistence",
+      "separation of UI, sample loading, and audio execution contexts",
+      "dedicated CPU/core allocation strategy for audio and non-audio work",
+      "basic MIDI note-to-sample assignment model",
+      "preview/browsing support through on-demand SD streaming",
+      "runtime diagnostics relevant to audio stability and memory usage"
+    ],
+    "out_of_scope": [
+      "presets",
+      "velocity layers",
+      "round robin",
+      "pitch shifting",
+      "time stretching",
+      "looping",
+      "ADSR envelopes",
+      "choke groups",
+      "dynamic cache eviction during performance",
+      "advanced adaptive preload policies"
+    ]
+  },
+  "audio_format_constraints": {
+    "supported_file_format": "WAV",
+    "supported_encoding": "PCM16",
+    "recommended_sample_rate": 44100,
+    "recommended_channel_mode": "mono_or_single_global_mode",
+    "notes": [
+      "Keep v1 format support narrow to reduce implementation and debugging risk.",
+      "If stereo is supported, enforce one consistent internal mixing path."
+    ]
+  },
+  "system_architecture": {
+    "execution_domains": [
+      {
+        "name": "audio_engine",
+        "priority": "highest",
+        "cpu_affinity": "dedicated_audio_core",
+        "responsibilities": [
+          "own and update the 8-voice pool",
+          "consume trigger events from a lock-safe queue",
+          "mix active voices into output buffers",
+          "read from RAM-backed sample sources",
+          "consume already-prepared stream buffers for SD-backed sources",
+          "mark voices inactive when playback ends",
+          "send completed buffers to audio output layer"
+        ],
+        "must_not_do": [
+          "directory scanning",
+          "file system enumeration",
+          "JSON parsing",
+          "settings serialization",
+          "debug logging in hot path",
+          "dynamic heap allocation in steady-state audio callback",
+          "blocking SD reads in the critical mixing path"
+        ],
+        "reserved_resources": [
+          "voice pool",
+          "mix buffers",
+          "audio DMA/I2S buffers",
+          "small control/event queue",
+          "stream read-consumption state"
+        ]
+      },
+      {
+        "name": "sample_loader",
+        "priority": "medium_high",
+        "cpu_affinity": "non_audio_core",
+        "responsibilities": [
+          "scan SD library at boot",
+          "read saved mapping/settings",
+          "build active sample set from saved MIDI assignments",
+          "read WAV headers only for active samples",
+          "classify active samples as RAM or STREAM according to policy",
+          "load RAM-assigned samples into sample memory budget",
+          "prepare and refill buffers for streamed voices",
+          "provide preview playback source data when browsing library"
+        ],
+        "must_not_do": [
+          "block UI unnecessarily for long operations without status feedback",
+          "modify active audio state unsafely",
+          "reclassify RAM/STREAM policy automatically during live playback"
+        ],
+        "reserved_resources": [
+          "sample registry",
+          "library index",
+          "active sample descriptors",
+          "sample RAM pool",
+          "stream buffers",
+          "file handles / SD access state"
+        ]
+      },
+      {
+        "name": "ui_controller",
+        "priority": "normal",
+        "cpu_affinity": "non_audio_core",
+        "responsibilities": [
+          "library browsing",
+          "editing MIDI note assignments",
+          "triggering preview playback requests",
+          "showing loading and error states",
+          "initiating save of settings",
+          "displaying diagnostics relevant to v1"
+        ],
+        "must_not_do": [
+          "direct audio mixing",
+          "direct ownership of voice structures",
+          "heavy synchronous SD work inside UI event handlers"
+        ],
+        "reserved_resources": [
+          "UI state",
+          "display buffers",
+          "input event queue",
+          "small config editing state"
+        ]
+      }
+    ],
+    "inter_domain_communication": {
+      "rules": [
+        "Use explicit queues/messages between UI, loader, and audio domains.",
+        "Avoid shared mutable state without clear ownership.",
+        "Audio domain consumes immutable or prebuilt descriptors whenever possible.",
+        "Loader domain owns file I/O and sample preparation.",
+        "UI domain requests actions but does not perform file-system or audio-critical work directly."
+      ],
+      "queues": [
+        {
+          "name": "trigger_queue",
+          "producer": ["midi_input", "ui_preview_optional"],
+          "consumer": "audio_engine",
+          "payload": ["event_type", "note", "velocity", "timestamp_optional"]
+        },
+        {
+          "name": "loader_command_queue",
+          "producer": ["ui_controller", "boot_sequence"],
+          "consumer": "sample_loader",
+          "payload": ["command_type", "arguments"]
+        },
+        {
+          "name": "ui_status_queue",
+          "producer": ["sample_loader", "audio_engine"],
+          "consumer": "ui_controller",
+          "payload": ["status_type", "message", "metrics_optional"]
+        }
+      ]
+    }
+  },
+  "cpu_and_tasking": {
+    "goals": [
+      "Give audio the most predictable execution environment.",
+      "Prevent UI and SD activity from interrupting sample mixing.",
+      "Keep loader and UI on the non-audio core."
+    ],
+    "requirements": {
+      "audio_task": {
+        "core": 1,
+        "priority": "highest_available_practical",
+        "timing": "must meet continuous buffer deadlines"
+      },
+      "loader_task": {
+        "core": 0,
+        "priority": "below_audio_above_ui",
+        "timing": "should prepare data ahead of playback needs"
+      },
+      "ui_task": {
+        "core": 0,
+        "priority": "normal",
+        "timing": "responsive but never at expense of audio"
+      }
+    },
+    "notes": [
+      "Core numbering may be adapted to platform conventions, but audio must remain isolated on its own core/task domain.",
+      "All blocking SD and settings I/O must stay off the audio task."
+    ]
+  },
+  "memory_management": {
+    "principles": [
+      "Do not preload the full library.",
+      "Only samples assigned to MIDI notes are candidates for playback preparation.",
+      "At boot, library discovery may store filenames/paths for browsing, but detailed audio preparation is limited to assigned samples.",
+      "Sample RAM has a fixed configurable budget separate from audio working memory.",
+      "No dynamic memory churn in the steady-state audio path."
+    ],
+    "memory_regions": [
+      {
+        "name": "audio_working_memory",
+        "owned_by": "audio_engine",
+        "contents": [
+          "voice pool",
+          "mix accumulators",
+          "audio output buffers",
+          "minimal control structures"
+        ],
+        "allocation_policy": "fixed_at_startup"
+      },
+      {
+        "name": "sample_ram_pool",
+        "owned_by": "sample_loader",
+        "contents": [
+          "fully loaded assigned samples classified as RAM"
+        ],
+        "allocation_policy": "fixed_budget_managed_by_loader"
+      },
+      {
+        "name": "stream_buffer_pool",
+        "owned_by": "sample_loader",
+        "contents": [
+          "read-ahead buffers for streamed active voices",
+          "optional preview playback buffers"
+        ],
+        "allocation_policy": "fixed_pool"
+      },
+      {
+        "name": "ui_and_config_memory",
+        "owned_by": "ui_controller",
+        "contents": [
+          "display state",
+          "editable mappings",
+          "settings model",
+          "library browsing state"
+        ],
+        "allocation_policy": "normal_non_audio_use"
+      }
+    ],
+    "sample_loading_policy": {
+      "preload_threshold_seconds": 2.0,
+      "policy_description": [
+        "Only MIDI-assigned samples are evaluated for preload/stream decisions.",
+        "If assigned sample duration is <= preload_threshold_seconds and sample RAM budget permits, load full sample to RAM.",
+        "If sample does not fit in remaining sample RAM budget, classify it as STREAM.",
+        "If assigned sample duration is > preload_threshold_seconds, classify it as STREAM in v1.",
+        "Do not automatically rebalance RAM/STREAM classifications during live operation."
+      ],
+      "future_extension_hint": "Longer assigned samples may be opportunistically promoted to RAM in later versions if spare sample RAM exists, but this is not required for v1."
+    },
+    "library_knowledge_model": {
+      "library_index": {
+        "contains": ["filename", "path", "file_size_optional"],
+        "purpose": "library browsing and assignment selection"
+      },
+      "active_sample_set": {
+        "contains": [
+          "midi_note",
+          "path",
+          "wav_header_metadata",
+          "storage_mode",
+          "ram_pointer_optional",
+          "stream_info_optional"
+        ],
+        "purpose": "playback preparation for currently assigned notes"
+      }
+    }
+  },
+  "persistence": {
+    "goal": "On boot, the device automatically restores the last saved playable state.",
+    "save_trigger": [
+      "explicit user save action",
+      "optional auto-save on assignment change if implemented safely outside audio path"
+    ],
+    "boot_behavior": [
+      "mount SD",
+      "build lightweight library index",
+      "load saved settings/configuration",
+      "validate saved file paths",
+      "construct active MIDI assignment map",
+      "prepare assigned samples for playback according to memory policy",
+      "start ready for immediate use"
+    ],
+    "saved_data_schema": {
+      "version": "string",
+      "global_settings": {
+        "sample_ram_budget_bytes": "integer",
+        "preload_threshold_seconds": "number",
+        "master_volume_optional": "number"
+      },
+      "midi_assignments": [
+        {
+          "note": "integer",
+          "sample_path": "string"
+        }
+      ]
+    },
+    "validation_rules": [
+      "If a saved sample path no longer exists, keep booting and mark the note unassigned/error state.",
+      "Do not fail the full boot just because one file is missing.",
+      "Preserve forward compatibility using a config version field."
+    ],
+    "storage_format": {
+      "preferred": "JSON",
+      "requirements": [
+        "human-readable",
+        "versioned",
+        "safe load with defaults on missing fields"
+      ]
+    }
+  },
+  "polyphony": {
+    "voice_count": 8,
+    "voice_model": {
+      "allocation": "fixed_pool",
+      "dynamic_allocation_during_playback": false,
+      "voice_fields": [
+        "active",
+        "sample_id_or_assignment_ref",
+        "position_frames",
+        "gain",
+        "source_type_ram_or_stream",
+        "stream_state_ref_optional",
+        "age_counter_or_start_timestamp"
+      ]
+    },
+    "voice_stealing": {
+      "policy": "oldest_voice",
+      "requirements": [
+        "When all 8 voices are active, allocate the incoming note by stealing the oldest currently active voice.",
+        "Reset the reused voice cleanly before starting new playback.",
+        "Track voice-steal count for diagnostics."
+      ]
+    }
+  },
+  "playback_model": {
+    "trigger_source": "MIDI Note On",
+    "mapping_model": "one MIDI note maps to one sample path in v1",
+    "sample_behavior": "one-shot playback to end",
+    "velocity_support": "optional_gain_scaling_if_easy",
+    "note_off_behavior": "ignored_for_basic_one_shot_v1",
+    "preview_behavior": {
+      "purpose": "browse and audition library files without assigning them first",
+      "implementation": "on-demand stream from SD via non-audio loader path feeding playback safely",
+      "notes": [
+        "Preview playback should not require preloading the full library.",
+        "Preview path may be lower priority than assigned performance playback."
+      ]
+    }
+  },
+  "boot_sequence": [
+    "initialize hardware and RTOS/task environment",
+    "start audio task on dedicated core with preallocated working memory",
+    "mount SD card",
+    "scan sample directory and build lightweight library index",
+    "load JSON settings/configuration",
+    "validate assignment file references",
+    "read WAV headers for assigned samples only",
+    "classify assigned samples as RAM or STREAM according to threshold and sample RAM budget",
+    "load RAM-classified assigned samples into sample RAM pool",
+    "initialize stream states/buffers for STREAM-capable playback",
+    "signal UI that system is ready"
+  ],
+  "runtime_flows": {
+    "midi_note_on": [
+      "MIDI input receives Note On",
+      "resolve assigned sample for note",
+      "push trigger event to audio trigger queue",
+      "audio engine allocates free voice or steals oldest active voice",
+      "voice starts from frame 0 using RAM or stream source",
+      "audio mixer renders into output buffer"
+    ],
+    "assignment_change": [
+      "UI selects MIDI note and sample from library index",
+      "loader updates editable mapping model",
+      "save operation persists mapping to JSON",
+      "loader prepares newly assigned sample metadata and RAM/STREAM classification",
+      "audio engine uses updated assignment only after safe handoff"
+    ],
+    "library_preview": [
+      "UI requests preview for library item",
+      "loader opens file and prepares temporary streaming source",
+      "playback occurs without requiring full assignment pipeline",
+      "preview stops and temporary resources are released cleanly"
+    ]
+  },
+  "modules": [
+    {
+      "name": "LibraryIndex",
+      "responsibility": "Maintain lightweight list of sample files available on SD for browsing and assignment selection.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "SettingsStore",
+      "responsibility": "Load and save JSON configuration containing global settings and MIDI assignments.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "AssignmentManager",
+      "responsibility": "Manage current MIDI note to sample path mapping and validation.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "ActiveSampleRegistry",
+      "responsibility": "Hold fully prepared descriptors only for MIDI-assigned samples.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "SampleRamManager",
+      "responsibility": "Own sample RAM budget and load qualifying assigned samples into RAM.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "StreamManager",
+      "responsibility": "Maintain read-ahead buffers and SD-backed playback support for streamed voices and preview playback.",
+      "owned_by": "sample_loader"
+    },
+    {
+      "name": "TriggerQueue",
+      "responsibility": "Transfer playback requests safely into audio domain.",
+      "owned_by": "audio_engine"
+    },
+    {
+      "name": "VoicePool",
+      "responsibility": "Own the 8 fixed voice slots and their runtime playback state.",
+      "owned_by": "audio_engine"
+    },
+    {
+      "name": "VoiceAllocator",
+      "responsibility": "Allocate free voice or steal oldest active voice.",
+      "owned_by": "audio_engine"
+    },
+    {
+      "name": "AudioMixer",
+      "responsibility": "Mix active voices into output buffer using preprepared sources only.",
+      "owned_by": "audio_engine"
+    },
+    {
+      "name": "UiStateController",
+      "responsibility": "Drive browsing, assignment editing, save/load status, and diagnostics display.",
+      "owned_by": "ui_controller"
+    }
+  ],
+  "implementation_requirements": {
+    "hard_requirements": [
+      "No blocking SD read in the critical audio mixing loop.",
+      "No malloc/free churn inside steady-state audio callback/task loop.",
+      "Audio engine must be able to run independently from UI activity.",
+      "Only MIDI-assigned samples participate in preload decision-making.",
+      "Saved settings and assignments must be loaded automatically at boot.",
+      "Missing assigned files must degrade gracefully rather than crash startup.",
+      "Oldest active voice stealing must be implemented deterministically."
+    ],
+    "preferred_requirements": [
+      "Use explicit ownership boundaries for state.",
+      "Provide clear debug counters for memory and streaming behavior.",
+      "Make preload threshold and sample RAM budget configurable through saved settings."
+    ]
+  },
+  "diagnostics": {
+    "counters": [
+      "active_voice_peak",
+      "voice_steal_count",
+      "sample_ram_used_bytes",
+      "sample_ram_budget_bytes",
+      "assigned_sample_count",
+      "ram_sample_count",
+      "stream_sample_count",
+      "stream_underrun_count",
+      "audio_buffer_underrun_count",
+      "boot_load_time_ms"
+    ],
+    "debug_views": [
+      "current assignment map",
+      "which assigned samples are RAM vs STREAM",
+      "missing file warnings",
+      "ready state after boot"
+    ]
+  },
+  "acceptance_criteria": [
+    "After reboot, saved assignments and settings are restored automatically without manual reconfiguration.",
+    "The engine supports 8 simultaneous voices under normal operation.",
+    "When a 9th trigger arrives, the oldest active voice is stolen and replaced deterministically.",
+    "Audio mixing runs on a dedicated core/task domain isolated from UI and loader work.",
+    "Only MIDI-assigned samples are deeply prepared for playback; the rest of the library remains lightweight for browsing.",
+    "Short assigned samples are loaded to RAM until sample RAM budget is exhausted; remaining assigned samples stream from SD.",
+    "UI browsing and settings operations do not interrupt steady audio playback.",
+    "System starts into a playable state automatically after boot if SD and saved config are valid enough."
+  ],
+  "non_goals_for_v1": [
+    "Do not optimize for maximum theoretical polyphony above stability target.",
+    "Do not implement advanced cache promotion or eviction logic.",
+    "Do not model the full library as fully parsed playback-ready assets at boot.",
+    "Do not solve future preset architecture in this task."
+  ]
+}

@@ -8,6 +8,7 @@
 #include "audio.h"
 #include "ui.h"
 #include "storage_sd.h"
+#include "settings_store.h"
 
 namespace {
 
@@ -20,6 +21,7 @@ constexpr int kMaxSamples = Ui::kMaxSamples;
 String gSamplePaths[kMaxSamples];
 String gSampleNames[kMaxSamples];
 int gSampleCount = 0;
+SettingsStore::SamplerSettings gSettings;
 
 bool isWavFile(const String &name) {
   return name.endsWith(".wav") || name.endsWith(".WAV");
@@ -77,6 +79,60 @@ void onPreviewSample(int sampleIndex, void * /*context*/) {
   gAudio.playSamplePath(gSamplePaths[sampleIndex]);
 }
 
+int findSampleIndexByPath(const String &path) {
+  for (int i = 0; i < gSampleCount; i++) {
+    if (gSamplePaths[i] == path) return i;
+  }
+  return -1;
+}
+
+void applySettingsAssignmentsToUi() {
+  int applied = 0;
+  int missing = 0;
+  for (int i = 0; i < gSettings.assignmentCount; i++) {
+    const SettingsStore::MidiAssignment &assignment = gSettings.assignments[i];
+    const int sampleIndex = findSampleIndexByPath(assignment.samplePath);
+    if (sampleIndex < 0) {
+      Serial.printf("Assignment path missing on SD for note %d: %s\n",
+                    static_cast<int>(assignment.note),
+                    assignment.samplePath.c_str());
+      missing++;
+      continue;
+    }
+    if (gUi.setMidiAssignment(assignment.note, sampleIndex)) {
+      applied++;
+    }
+  }
+  Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
+}
+
+void collectSettingsAssignmentsFromUi() {
+  gSettings.assignmentCount = 0;
+  for (int note = 0; note < 128; note++) {
+    if (gSettings.assignmentCount >= SettingsStore::SamplerSettings::kMaxAssignments) {
+      Serial.println("Assignment export truncated to settings capacity");
+      break;
+    }
+
+    const int sampleIndex = gUi.assignedSampleForMidiNote(note);
+    if (sampleIndex < 0 || sampleIndex >= gSampleCount) continue;
+
+    SettingsStore::MidiAssignment &entry = gSettings.assignments[gSettings.assignmentCount];
+    entry.note = static_cast<uint8_t>(note);
+    entry.samplePath = gSamplePaths[sampleIndex];
+    gSettings.assignmentCount++;
+  }
+}
+
+bool onSaveConfiguration(void * /*context*/) {
+  collectSettingsAssignmentsFromUi();
+  const bool ok = SettingsStore::saveToSd(gSettings);
+  Serial.printf("Settings save: %s, assignments=%d\n",
+                ok ? "OK" : "FAILED",
+                gSettings.assignmentCount);
+  return ok;
+}
+
 void onInputEvent(const Input::Event &event, void * /*context*/) {
   Ui::Event uiEvent;
   uiEvent.value = event.value;
@@ -112,9 +168,16 @@ void setup() {
   const bool sdReady = StorageSD::init();
   if (sdReady) {
     loadSamplesFromSd();
+    const bool loaded = SettingsStore::loadFromSd(gSettings);
+    Serial.printf("Settings load: %s, assignments=%d, ram_budget=%lu, preload=%.2f\n",
+                  loaded ? "OK" : "DEFAULT",
+                  gSettings.assignmentCount,
+                  static_cast<unsigned long>(gSettings.sampleRamBudgetBytes),
+                  static_cast<double>(gSettings.preloadThresholdSeconds));
   } else {
     Serial.println("Continuing without SD (input/display debug still active).");
     gSampleCount = 0;
+    SettingsStore::applyDefaults(gSettings);
   }
 
   if (!CodecES8388::init()) {
@@ -130,7 +193,9 @@ void setup() {
   }
 
   gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
+  applySettingsAssignmentsToUi();
   gUi.setPreviewCallback(onPreviewSample, nullptr);
+  gUi.setSaveCallback(onSaveConfiguration, nullptr);
   gDisplay.renderUi(gUi);
 
   gInput.begin();

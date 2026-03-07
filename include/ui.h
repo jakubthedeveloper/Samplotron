@@ -45,12 +45,15 @@ class Ui {
     int libraryWindowStart = 0;
     int assignedNoteForSelectedSample = -1;
     bool showSavedFeedback = false;
+    bool lastSaveSucceeded = true;
   };
 
   using OnPreviewSampleCallback = void (*)(int sampleIndex, void *context);
+  using OnSaveCallback = bool (*)(void *context);
 
   void begin(const String *sampleNames, const String *samplePaths, int sampleCount);
   void setPreviewCallback(OnPreviewSampleCallback callback, void *context);
+  void setSaveCallback(OnSaveCallback callback, void *context);
   void handleEvent(const Event &event);
   void update();
   bool consumeDirty();
@@ -59,6 +62,8 @@ class Ui {
   const String &samplePathAt(int sampleIndex) const;
   const String &sampleNameAt(int sampleIndex) const;
   bool hasSamples() const;
+  bool setMidiAssignment(int note, int sampleIndex);
+  int assignedSampleForMidiNote(int note) const;
 
  private:
   static constexpr int kMenuItems = 4;
@@ -91,10 +96,13 @@ class Ui {
   int sampleForMidiNote_[128] = {0};  // -1 means unassigned.
 
   bool saveCompletedPending_ = false;
+  bool lastSaveSucceeded_ = true;
   unsigned long saveFeedbackUntilMs_ = 0;
 
   State state_ = State::Main;
   RenderModel model_;
   OnPreviewSampleCallback onPreview_ = nullptr;
   void *previewContext_ = nullptr;
+  OnSaveCallback onSave_ = nullptr;
+  void *saveContext_ = nullptr;
 };

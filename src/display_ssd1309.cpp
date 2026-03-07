@@ -127,7 +127,7 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   gDisplay.drawStr(68, 26, pitchLine);
 
   if (model.showSavedFeedback) {
-    gDisplay.drawStr(0, 36, "Saved");
+    gDisplay.drawStr(0, 36, model.lastSaveSucceeded ? "Saved" : "Save ERR");
   }
 
   static const char *kItems[4] = {"LIB", "VOL", "PITCH", "SAVE"};
