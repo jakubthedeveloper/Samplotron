@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "storage_sd.h"
 #include "settings_store.h"
+#include "sample_classifier.h"
 
 namespace {
 
@@ -22,6 +23,7 @@ String gSamplePaths[kMaxSamples];
 String gSampleNames[kMaxSamples];
 int gSampleCount = 0;
 SettingsStore::SamplerSettings gSettings;
+SampleClassifier::ClassificationReport gClassificationReport;
 
 bool isWavFile(const String &name) {
   return name.endsWith(".wav") || name.endsWith(".WAV");
@@ -124,8 +126,34 @@ void collectSettingsAssignmentsFromUi() {
   }
 }
 
+void classifyAssignedSamplesAndLog() {
+  SampleClassifier::classifyAssignedSamples(gSettings, gClassificationReport);
+  Serial.printf(
+      "Classification: assigned=%d ram=%d stream=%d missing=%d invalid=%d read_err=%d "
+      "ram_used=%lu/%lu\n",
+      gClassificationReport.itemCount,
+      gClassificationReport.ramSampleCount,
+      gClassificationReport.streamSampleCount,
+      gClassificationReport.missingFileCount,
+      gClassificationReport.invalidFormatCount,
+      gClassificationReport.readErrorCount,
+      static_cast<unsigned long>(gClassificationReport.sampleRamUsedBytes),
+      static_cast<unsigned long>(gClassificationReport.sampleRamBudgetBytes));
+
+  for (int i = 0; i < gClassificationReport.itemCount; i++) {
+    const SampleClassifier::AssignedSampleClassification &item = gClassificationReport.items[i];
+    Serial.printf("  note=%d mode=%s dur=%.3fs bytes=%lu path=%s\n",
+                  static_cast<int>(item.note),
+                  SampleClassifier::storageModeLabel(item.mode),
+                  static_cast<double>(item.durationSeconds),
+                  static_cast<unsigned long>(item.dataBytes),
+                  item.path.c_str());
+  }
+}
+
 bool onSaveConfiguration(void * /*context*/) {
   collectSettingsAssignmentsFromUi();
+  classifyAssignedSamplesAndLog();
   const bool ok = SettingsStore::saveToSd(gSettings);
   Serial.printf("Settings save: %s, assignments=%d\n",
                 ok ? "OK" : "FAILED",
@@ -194,6 +222,7 @@ void setup() {
 
   gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
   applySettingsAssignmentsToUi();
+  classifyAssignedSamplesAndLog();
   gUi.setPreviewCallback(onPreviewSample, nullptr);
   gUi.setSaveCallback(onSaveConfiguration, nullptr);
   gDisplay.renderUi(gUi);
