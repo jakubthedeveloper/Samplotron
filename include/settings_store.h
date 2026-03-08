@@ -12,12 +12,10 @@ struct MidiAssignment {
 
 struct SamplerSettings {
   static constexpr uint32_t kDefaultSampleRamBudgetBytes = 1024UL * 1024UL;
-  static constexpr float kDefaultPreloadThresholdSeconds = 2.0f;
   static constexpr int kMaxAssignments = 128;
 
   String version;
   uint32_t sampleRamBudgetBytes = kDefaultSampleRamBudgetBytes;
-  float preloadThresholdSeconds = kDefaultPreloadThresholdSeconds;
 
   int assignmentCount = 0;
   MidiAssignment assignments[kMaxAssignments];
@@ -26,5 +24,6 @@ struct SamplerSettings {
 void applyDefaults(SamplerSettings &settings);
 bool loadFromSd(SamplerSettings &settings);
 bool saveToSd(const SamplerSettings &settings);
+bool logRawJsonFromSd();
 
 }  // namespace SettingsStore

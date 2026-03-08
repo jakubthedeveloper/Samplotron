@@ -177,7 +177,7 @@ void classifyAssignedSamples(const SettingsStore::SamplerSettings &settings,
         item.dataBytes = info.dataBytes;
         item.durationSeconds = durationSeconds(info);
 
-        const bool fitsThreshold = item.durationSeconds <= settings.preloadThresholdSeconds;
+        const bool fitsThreshold = item.durationSeconds <= kFixedPreloadThresholdSeconds;
         const uint32_t ramRemaining =
             (report.sampleRamBudgetBytes > report.sampleRamUsedBytes)
                 ? (report.sampleRamBudgetBytes - report.sampleRamUsedBytes)

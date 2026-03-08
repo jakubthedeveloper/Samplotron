@@ -1,4 +1,5 @@
 #include "settings_store.h"
+#include "debug_flags.h"
 
 #include <Arduino.h>
 #include <SD.h>
@@ -37,7 +38,6 @@ namespace SettingsStore {
 void applyDefaults(SamplerSettings &settings) {
   settings.version = kCurrentVersion;
   settings.sampleRamBudgetBytes = SamplerSettings::kDefaultSampleRamBudgetBytes;
-  settings.preloadThresholdSeconds = SamplerSettings::kDefaultPreloadThresholdSeconds;
   settings.assignmentCount = 0;
 }
 
@@ -68,15 +68,10 @@ bool loadFromSd(SamplerSettings &settings) {
     settings.version = String(gSettingsJsonDoc["version"].as<const char *>());
   }
 
-  JsonVariant globalSettings = gSettingsJsonDoc["global_settings"];
+  JsonObject globalSettings = gSettingsJsonDoc["global_settings"].as<JsonObject>();
   if (!globalSettings.isNull()) {
     if (globalSettings["sample_ram_budget_bytes"].is<uint32_t>()) {
       settings.sampleRamBudgetBytes = globalSettings["sample_ram_budget_bytes"].as<uint32_t>();
-    }
-    if (globalSettings["preload_threshold_seconds"].is<float>() ||
-        globalSettings["preload_threshold_seconds"].is<double>() ||
-        globalSettings["preload_threshold_seconds"].is<int>()) {
-      settings.preloadThresholdSeconds = globalSettings["preload_threshold_seconds"].as<float>();
     }
   }
 
@@ -116,7 +111,6 @@ bool saveToSd(const SamplerSettings &settings) {
 
   JsonObject globalSettings = gSettingsJsonDoc.createNestedObject("global_settings");
   globalSettings["sample_ram_budget_bytes"] = settings.sampleRamBudgetBytes;
-  globalSettings["preload_threshold_seconds"] = settings.preloadThresholdSeconds;
 
   JsonArray assignments = gSettingsJsonDoc.createNestedArray("midi_assignments");
   for (int i = 0; i < settings.assignmentCount; i++) {
@@ -145,6 +139,34 @@ bool saveToSd(const SamplerSettings &settings) {
 
   file.println();
   file.close();
+  return true;
+}
+
+bool logRawJsonFromSd() {
+  if (!DebugFlags::kEnableDebugLogs) {
+    return true;
+  }
+
+  Serial.println("Settings JSON dump BEGIN");
+  if (!SD.exists(kSettingsPath)) {
+    Serial.printf("Settings JSON missing: %s\n", kSettingsPath);
+    Serial.println("Settings JSON dump END");
+    return false;
+  }
+
+  File file = SD.open(kSettingsPath, FILE_READ);
+  if (!file) {
+    Serial.printf("Failed to open settings for dump (%s)\n", kSettingsPath);
+    Serial.println("Settings JSON dump END");
+    return false;
+  }
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    Serial.println(line);
+  }
+  file.close();
+  Serial.println("Settings JSON dump END");
   return true;
 }
 

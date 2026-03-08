@@ -7,6 +7,8 @@
 
 namespace SampleClassifier {
 
+constexpr float kFixedPreloadThresholdSeconds = 5.0f;
+
 enum class StorageMode : uint8_t {
   Ram,
   Stream,

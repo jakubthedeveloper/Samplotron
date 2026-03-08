@@ -1,4 +1,5 @@
 #include "sample_ram_manager.h"
+#include "debug_flags.h"
 
 #include <SD.h>
 #include <esp_heap_caps.h>
@@ -19,6 +20,25 @@ struct LoadedEntry {
 uint8_t *gPool = nullptr;
 uint32_t gPoolCapacity = 0;
 LoadedEntry gLoadedEntries[SettingsStore::SamplerSettings::kMaxAssignments];
+bool gPoolBudgetLocked = false;
+uint32_t gFixedPoolBudget = 0;
+
+void logPoolDiagnostics(uint32_t budgetBytes) {
+  if (!DebugFlags::kEnableDebugLogs) {
+    return;
+  }
+  const size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  const size_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  const size_t free8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  const size_t largest8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  Serial.printf(
+      "RAM pool diag: req=%lu free_psram=%lu largest_psram=%lu free_8bit=%lu largest_8bit=%lu\n",
+      static_cast<unsigned long>(budgetBytes),
+      static_cast<unsigned long>(freePsram),
+      static_cast<unsigned long>(largestPsram),
+      static_cast<unsigned long>(free8bit),
+      static_cast<unsigned long>(largest8bit));
+}
 
 uint32_t readLe32(const uint8_t *buf) {
   return static_cast<uint32_t>(buf[0]) | (static_cast<uint32_t>(buf[1]) << 8) |
@@ -42,19 +62,11 @@ void freePool() {
   gPoolCapacity = 0;
 }
 
-bool ensurePool(uint32_t budgetBytes) {
-  if (budgetBytes == 0) {
-    freePool();
-    return true;
-  }
+bool allocatePool(uint32_t budgetBytes) {
+  if (budgetBytes == 0) return true;
+  if (gPool && gPoolCapacity == budgetBytes) return true;
 
-  if (gPool && gPoolCapacity == budgetBytes) {
-    return true;
-  }
-
-  freePool();
-  gPool = static_cast<uint8_t *>(
-      heap_caps_malloc(budgetBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  gPool = static_cast<uint8_t *>(heap_caps_malloc(budgetBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!gPool) {
     gPool = static_cast<uint8_t *>(malloc(budgetBytes));
   }
@@ -159,6 +171,16 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
              LoadReport &report) {
   report = LoadReport{};
   report.budgetBytes = settings.sampleRamBudgetBytes;
+
+  if (!gPoolBudgetLocked) {
+    gPoolBudgetLocked = true;
+    gFixedPoolBudget = settings.sampleRamBudgetBytes;
+  }
+  report.effectiveBudgetBytes = gFixedPoolBudget;
+  if (settings.sampleRamBudgetBytes != gFixedPoolBudget) {
+    report.fixedBudgetMismatch = true;
+  }
+
   for (int i = 0; i < classification.itemCount; i++) {
     if (classification.items[i].mode == SampleClassifier::StorageMode::Ram) {
       report.requestedRamCount++;
@@ -166,15 +188,20 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
   }
 
   if (report.requestedRamCount == 0) {
-    freePool();
     clearLoadedEntries();
+    report.allocatedBytes = gPoolCapacity;
     return true;
   }
 
   clearLoadedEntries();
-  if (!ensurePool(report.budgetBytes)) {
+  logPoolDiagnostics(gFixedPoolBudget);
+  if (!allocatePool(gFixedPoolBudget)) {
     report.allocatedBytes = 0;
     report.fallbackToStreamCount = report.requestedRamCount;
+    if (DebugFlags::kEnableDebugLogs) {
+      Serial.printf("RAM pool alloc failed for %lu bytes\n",
+                    static_cast<unsigned long>(gFixedPoolBudget));
+    }
     return false;
   }
   report.allocatedBytes = gPoolCapacity;
@@ -234,6 +261,16 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
 void release() {
   clearLoadedEntries();
   freePool();
+  gPoolBudgetLocked = false;
+  gFixedPoolBudget = 0;
+}
+
+bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info) {
+  const int idx = findLoadedEntryByPath(path);
+  if (idx < 0) return false;
+  info.dataBytes = gLoadedEntries[idx].dataBytes;
+  info.poolOffset = gLoadedEntries[idx].poolOffset;
+  return true;
 }
 
 }  // namespace SampleRamManager

@@ -2,8 +2,10 @@
 #include <SD.h>
 
 #include "codec_es8388.h"
+#include "debug_flags.h"
 #include "display_ssd1309.h"
 #include "input.h"
+#include "midi.h"
 #include "pins.h"
 #include "audio.h"
 #include "ui.h"
@@ -11,11 +13,13 @@
 #include "settings_store.h"
 #include "sample_classifier.h"
 #include "sample_ram_manager.h"
+#include "active_sample_registry.h"
 
 namespace {
 
 Audio gAudio;
 Input gInput;
+Midi gMidi;
 Ui gUi;
 DisplaySsd1309 gDisplay;
 
@@ -26,6 +30,7 @@ int gSampleCount = 0;
 SettingsStore::SamplerSettings gSettings;
 SampleClassifier::ClassificationReport gClassificationReport;
 SampleRamManager::LoadReport gRamLoadReport;
+ActiveSampleRegistry::RegistryReport gActiveRegistryReport;
 DisplaySsd1309::BootScreenModel gBootScreenModel;
 bool gBootScreenDismissRequested = false;
 
@@ -85,6 +90,35 @@ void onPreviewSample(int sampleIndex, void * /*context*/) {
   gAudio.playSamplePath(gSamplePaths[sampleIndex]);
 }
 
+const ActiveSampleRegistry::Entry *findActiveRegistryEntryForNote(int note) {
+  for (int i = 0; i < gActiveRegistryReport.itemCount; i++) {
+    if (gActiveRegistryReport.items[i].note == static_cast<uint8_t>(note)) {
+      return &gActiveRegistryReport.items[i];
+    }
+  }
+  return nullptr;
+}
+
+void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
+  const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
+  if (!entry) {
+    Serial.printf("No active assignment for MIDI note %d\n", midiNote);
+    return;
+  }
+  if (entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Unavailable) {
+    Serial.printf("Assignment unavailable for MIDI note %d (%s)\n",
+                  midiNote,
+                  entry->path.c_str());
+    return;
+  }
+
+  Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",
+                midiNote,
+                ActiveSampleRegistry::effectiveStorageModeLabel(entry->effectiveMode),
+                entry->path.c_str());
+  gAudio.playSamplePath(entry->path);
+}
+
 int findSampleIndexByPath(const String &path) {
   for (int i = 0; i < gSampleCount; i++) {
     if (gSamplePaths[i] == path) return i;
@@ -109,7 +143,9 @@ void applySettingsAssignmentsToUi() {
       applied++;
     }
   }
-  Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
+  if (DebugFlags::kEnableDebugLogs) {
+    Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
+  }
 }
 
 void collectSettingsAssignmentsFromUi() {
@@ -132,39 +168,70 @@ void collectSettingsAssignmentsFromUi() {
 
 void classifyAssignedSamplesAndLog() {
   SampleClassifier::classifyAssignedSamples(gSettings, gClassificationReport);
-  Serial.printf(
-      "Classification: assigned=%d ram=%d stream=%d missing=%d invalid=%d read_err=%d "
-      "ram_used=%lu/%lu\n",
-      gClassificationReport.itemCount,
-      gClassificationReport.ramSampleCount,
-      gClassificationReport.streamSampleCount,
-      gClassificationReport.missingFileCount,
-      gClassificationReport.invalidFormatCount,
-      gClassificationReport.readErrorCount,
-      static_cast<unsigned long>(gClassificationReport.sampleRamUsedBytes),
-      static_cast<unsigned long>(gClassificationReport.sampleRamBudgetBytes));
+  if (DebugFlags::kEnableDebugLogs) {
+    Serial.printf(
+        "Classification: assigned=%d ram=%d stream=%d missing=%d invalid=%d read_err=%d "
+        "ram_used=%lu/%lu\n",
+        gClassificationReport.itemCount,
+        gClassificationReport.ramSampleCount,
+        gClassificationReport.streamSampleCount,
+        gClassificationReport.missingFileCount,
+        gClassificationReport.invalidFormatCount,
+        gClassificationReport.readErrorCount,
+        static_cast<unsigned long>(gClassificationReport.sampleRamUsedBytes),
+        static_cast<unsigned long>(gClassificationReport.sampleRamBudgetBytes));
+  }
 
-  for (int i = 0; i < gClassificationReport.itemCount; i++) {
-    const SampleClassifier::AssignedSampleClassification &item = gClassificationReport.items[i];
-    Serial.printf("  note=%d mode=%s dur=%.3fs bytes=%lu path=%s\n",
-                  static_cast<int>(item.note),
-                  SampleClassifier::storageModeLabel(item.mode),
-                  static_cast<double>(item.durationSeconds),
-                  static_cast<unsigned long>(item.dataBytes),
-                  item.path.c_str());
+  if (DebugFlags::kEnableDebugLogs) {
+    for (int i = 0; i < gClassificationReport.itemCount; i++) {
+      const SampleClassifier::AssignedSampleClassification &item = gClassificationReport.items[i];
+      Serial.printf("  note=%d mode=%s dur=%.3fs bytes=%lu path=%s\n",
+                    static_cast<int>(item.note),
+                    SampleClassifier::storageModeLabel(item.mode),
+                    static_cast<double>(item.durationSeconds),
+                    static_cast<unsigned long>(item.dataBytes),
+                    item.path.c_str());
+    }
   }
 }
 
 void loadClassifiedRamSamplesAndLog() {
   const bool ok = SampleRamManager::prepare(gSettings, gClassificationReport, gRamLoadReport);
-  Serial.printf("RAM preload: %s requested=%d loaded=%d fallback=%d read_err=%d used=%lu/%lu\n",
+  Serial.printf("RAM preload: %s requested=%d loaded=%d fallback=%d read_err=%d used=%lu/%lu budget=%lu",
                 ok ? "OK" : "POOL_ALLOC_FAIL",
                 gRamLoadReport.requestedRamCount,
                 gRamLoadReport.loadedRamCount,
                 gRamLoadReport.fallbackToStreamCount,
                 gRamLoadReport.readErrorCount,
                 static_cast<unsigned long>(gRamLoadReport.usedBytes),
-                static_cast<unsigned long>(gRamLoadReport.allocatedBytes));
+                static_cast<unsigned long>(gRamLoadReport.allocatedBytes),
+                static_cast<unsigned long>(gRamLoadReport.effectiveBudgetBytes));
+  if (gRamLoadReport.fixedBudgetMismatch) {
+    Serial.print(" (fixed-pool budget mismatch)");
+  }
+  Serial.println();
+}
+
+void buildActiveRegistryAndLog() {
+  ActiveSampleRegistry::build(gClassificationReport, gActiveRegistryReport);
+  if (DebugFlags::kEnableDebugLogs) {
+    Serial.printf("Active registry: items=%d effective_ram=%d effective_stream=%d unavailable=%d "
+                  "ram_fallback_to_stream=%d\n",
+                  gActiveRegistryReport.itemCount,
+                  gActiveRegistryReport.effectiveRamCount,
+                  gActiveRegistryReport.effectiveStreamCount,
+                  gActiveRegistryReport.unavailableCount,
+                  gActiveRegistryReport.fallbackFromRamToStreamCount);
+    for (int i = 0; i < gActiveRegistryReport.itemCount; i++) {
+      const ActiveSampleRegistry::Entry &entry = gActiveRegistryReport.items[i];
+      Serial.printf("  note=%d classified=%s effective=%s bytes=%lu path=%s\n",
+                    static_cast<int>(entry.note),
+                    SampleClassifier::storageModeLabel(entry.classifiedMode),
+                    ActiveSampleRegistry::effectiveStorageModeLabel(entry.effectiveMode),
+                    static_cast<unsigned long>(entry.dataBytes),
+                    entry.path.c_str());
+    }
+  }
 }
 
 void refreshBootScreenMetrics(bool loading) {
@@ -172,9 +239,9 @@ void refreshBootScreenMetrics(bool loading) {
   gBootScreenModel.totalSamples = gSampleCount;
   gBootScreenModel.assignedSamples = gSettings.assignmentCount;
 
-  if (gClassificationReport.sampleRamBudgetBytes > 0) {
-    const uint32_t pct = (100UL * gClassificationReport.sampleRamUsedBytes) /
-                         gClassificationReport.sampleRamBudgetBytes;
+  const uint32_t budgetBytes = gSettings.sampleRamBudgetBytes;
+  if (budgetBytes > 0) {
+    const uint32_t pct = (100UL * gRamLoadReport.usedBytes) / budgetBytes;
     gBootScreenModel.ramUsagePercent = (pct > 100UL) ? 100 : static_cast<int>(pct);
   } else {
     gBootScreenModel.ramUsagePercent = 0;
@@ -187,6 +254,7 @@ bool onSaveConfiguration(void * /*context*/) {
   collectSettingsAssignmentsFromUi();
   classifyAssignedSamplesAndLog();
   loadClassifiedRamSamplesAndLog();
+  buildActiveRegistryAndLog();
   const bool ok = SettingsStore::saveToSd(gSettings);
   Serial.printf("Settings save: %s, assignments=%d\n",
                 ok ? "OK" : "FAILED",
@@ -229,6 +297,9 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("Booting Samplotron...");
+  Serial.printf("PSRAM: size=%u free=%u\n",
+                static_cast<unsigned int>(ESP.getPsramSize()),
+                static_cast<unsigned int>(ESP.getFreePsram()));
 
   if (!CodecES8388::init()) {
     Serial.println("Codec init failed");
@@ -251,11 +322,12 @@ void setup() {
     loadSamplesFromSd();
     refreshBootScreenMetrics(true);
     const bool loaded = SettingsStore::loadFromSd(gSettings);
-    Serial.printf("Settings load: %s, assignments=%d, ram_budget=%lu, preload=%.2f\n",
+    Serial.printf("Settings load: %s, assignments=%d, ram_budget=%lu, preload_fixed=%.2f\n",
                   loaded ? "OK" : "DEFAULT",
                   gSettings.assignmentCount,
                   static_cast<unsigned long>(gSettings.sampleRamBudgetBytes),
-                  static_cast<double>(gSettings.preloadThresholdSeconds));
+                  static_cast<double>(SampleClassifier::kFixedPreloadThresholdSeconds));
+    SettingsStore::logRawJsonFromSd();
     refreshBootScreenMetrics(true);
   } else {
     Serial.println("Continuing without SD (input/display debug still active).");
@@ -266,9 +338,11 @@ void setup() {
 
   gInput.begin();
   gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
+  gMidi.begin(&gUi);
   applySettingsAssignmentsToUi();
   classifyAssignedSamplesAndLog();
   loadClassifiedRamSamplesAndLog();
+  buildActiveRegistryAndLog();
   refreshBootScreenMetrics(false);
 
   const unsigned long bootScreenUntilMs = millis() + 5000UL;
@@ -279,6 +353,7 @@ void setup() {
 
   gUi.setPreviewCallback(onPreviewSample, nullptr);
   gUi.setSaveCallback(onSaveConfiguration, nullptr);
+  gMidi.setAssignedNoteOnCallback(onAssignedMidiNoteOn, nullptr);
   gDisplay.renderUi(gUi);
 
   gAudio.begin();
