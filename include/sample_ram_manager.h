@@ -13,6 +13,11 @@ struct LoadedSampleInfo {
   uint32_t poolOffset = 0;
 };
 
+struct LoadedSampleData {
+  const uint8_t *data = nullptr;
+  uint32_t dataBytes = 0;
+};
+
 struct LoadReport {
   uint32_t budgetBytes = 0;
   uint32_t effectiveBudgetBytes = 0;
@@ -30,6 +35,7 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
              LoadReport &report);
 
 bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info);
+bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data);
 void release();
 
 }  // namespace SampleRamManager

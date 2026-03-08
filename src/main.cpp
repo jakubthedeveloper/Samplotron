@@ -99,6 +99,16 @@ const ActiveSampleRegistry::Entry *findActiveRegistryEntryForNote(int note) {
   return nullptr;
 }
 
+const SampleClassifier::AssignedSampleClassification *findClassificationByPath(const String &path) {
+  for (int i = 0; i < gClassificationReport.itemCount; i++) {
+    const SampleClassifier::AssignedSampleClassification &item = gClassificationReport.items[i];
+    if (item.path == path) {
+      return &item;
+    }
+  }
+  return nullptr;
+}
+
 void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
   const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
   if (!entry) {
@@ -110,6 +120,33 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
                   midiNote,
                   entry->path.c_str());
     return;
+  }
+
+  if (entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Ram) {
+    SampleRamManager::LoadedSampleData loadedData;
+    const SampleClassifier::AssignedSampleClassification *classified =
+        findClassificationByPath(entry->path);
+    if (classified && SampleRamManager::getLoadedSampleDataByPath(entry->path, loadedData)) {
+      const bool played = gAudio.playSampleRam(loadedData.data,
+                                               loadedData.dataBytes,
+                                               classified->channelCount,
+                                               classified->sampleRate,
+                                               classified->bitsPerSample);
+      if (played) {
+        if (DebugFlags::kEnableDebugLogs) {
+          Serial.printf("PLAY note=%d via RAM path=%s bytes=%lu\n",
+                        midiNote,
+                        entry->path.c_str(),
+                        static_cast<unsigned long>(loadedData.dataBytes));
+        }
+        return;
+      }
+      if (DebugFlags::kEnableDebugLogs) {
+        Serial.printf("RAM playback failed for note=%d, fallback to stream path=%s\n",
+                      midiNote,
+                      entry->path.c_str());
+      }
+    }
   }
 
   Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",

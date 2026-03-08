@@ -273,4 +273,20 @@ bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info) {
   return true;
 }
 
+bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data) {
+  data = LoadedSampleData{};
+  const int idx = findLoadedEntryByPath(path);
+  if (idx < 0 || !gPool) return false;
+
+  const uint32_t offset = gLoadedEntries[idx].poolOffset;
+  const uint32_t bytes = gLoadedEntries[idx].dataBytes;
+  if (bytes == 0 || offset > gPoolCapacity || (gPoolCapacity - offset) < bytes) {
+    return false;
+  }
+
+  data.data = gPool + offset;
+  data.dataBytes = bytes;
+  return true;
+}
+
 }  // namespace SampleRamManager
