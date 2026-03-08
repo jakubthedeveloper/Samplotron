@@ -55,6 +55,30 @@ void DisplaySsd1309::renderUi(Ui &ui) {
   dirty_ = true;
 }
 
+void DisplaySsd1309::renderBootScreen(const BootScreenModel &model) {
+  if (!ready_) return;
+
+  gDisplay.clearBuffer();
+
+  gDisplay.setFont(u8g2_font_10x20_tf);
+  gDisplay.drawStr(12, 20, "Samplotron");
+
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  char line1[28];
+  char line2[28];
+  char line3[28];
+  snprintf(line1, sizeof(line1), "Samples total: %d", model.totalSamples);
+  snprintf(line2, sizeof(line2), "Assigned:      %d", model.assignedSamples);
+  snprintf(line3, sizeof(line3), "RAM used:      %d%%", model.ramUsagePercent);
+  gDisplay.drawStr(0, 34, line1);
+  gDisplay.drawStr(0, 44, line2);
+  gDisplay.drawStr(0, 54, line3);
+  gDisplay.drawStr(0, 63, model.loading ? "Loading..." : "Ready (press/turn to skip)");
+
+  gDisplay.sendBuffer();
+  dirty_ = false;
+}
+
 void DisplaySsd1309::update() {
   if (!ready_ || !ui_) return;
 

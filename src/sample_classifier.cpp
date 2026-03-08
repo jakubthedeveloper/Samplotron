@@ -109,13 +109,35 @@ int findExistingPathIndex(const SampleClassifier::ClassificationReport &report, 
   return -1;
 }
 
+void resetReport(SampleClassifier::ClassificationReport &report) {
+  for (int i = 0; i < SampleClassifier::ClassificationReport::kMaxItems; i++) {
+    report.items[i].note = 0;
+    report.items[i].path = "";
+    report.items[i].channelCount = 0;
+    report.items[i].bitsPerSample = 0;
+    report.items[i].sampleRate = 0;
+    report.items[i].dataBytes = 0;
+    report.items[i].durationSeconds = 0.0f;
+    report.items[i].mode = SampleClassifier::StorageMode::ReadError;
+  }
+
+  report.itemCount = 0;
+  report.sampleRamBudgetBytes = 0;
+  report.sampleRamUsedBytes = 0;
+  report.ramSampleCount = 0;
+  report.streamSampleCount = 0;
+  report.missingFileCount = 0;
+  report.invalidFormatCount = 0;
+  report.readErrorCount = 0;
+}
+
 }  // namespace
 
 namespace SampleClassifier {
 
 void classifyAssignedSamples(const SettingsStore::SamplerSettings &settings,
                              ClassificationReport &report) {
-  report = ClassificationReport{};
+  resetReport(report);
   report.sampleRamBudgetBytes = settings.sampleRamBudgetBytes;
 
   for (int i = 0;

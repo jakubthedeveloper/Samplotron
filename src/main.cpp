@@ -10,6 +10,7 @@
 #include "storage_sd.h"
 #include "settings_store.h"
 #include "sample_classifier.h"
+#include "sample_ram_manager.h"
 
 namespace {
 
@@ -24,6 +25,9 @@ String gSampleNames[kMaxSamples];
 int gSampleCount = 0;
 SettingsStore::SamplerSettings gSettings;
 SampleClassifier::ClassificationReport gClassificationReport;
+SampleRamManager::LoadReport gRamLoadReport;
+DisplaySsd1309::BootScreenModel gBootScreenModel;
+bool gBootScreenDismissRequested = false;
 
 bool isWavFile(const String &name) {
   return name.endsWith(".wav") || name.endsWith(".WAV");
@@ -151,14 +155,47 @@ void classifyAssignedSamplesAndLog() {
   }
 }
 
+void loadClassifiedRamSamplesAndLog() {
+  const bool ok = SampleRamManager::prepare(gSettings, gClassificationReport, gRamLoadReport);
+  Serial.printf("RAM preload: %s requested=%d loaded=%d fallback=%d read_err=%d used=%lu/%lu\n",
+                ok ? "OK" : "POOL_ALLOC_FAIL",
+                gRamLoadReport.requestedRamCount,
+                gRamLoadReport.loadedRamCount,
+                gRamLoadReport.fallbackToStreamCount,
+                gRamLoadReport.readErrorCount,
+                static_cast<unsigned long>(gRamLoadReport.usedBytes),
+                static_cast<unsigned long>(gRamLoadReport.allocatedBytes));
+}
+
+void refreshBootScreenMetrics(bool loading) {
+  gBootScreenModel.loading = loading;
+  gBootScreenModel.totalSamples = gSampleCount;
+  gBootScreenModel.assignedSamples = gSettings.assignmentCount;
+
+  if (gClassificationReport.sampleRamBudgetBytes > 0) {
+    const uint32_t pct = (100UL * gClassificationReport.sampleRamUsedBytes) /
+                         gClassificationReport.sampleRamBudgetBytes;
+    gBootScreenModel.ramUsagePercent = (pct > 100UL) ? 100 : static_cast<int>(pct);
+  } else {
+    gBootScreenModel.ramUsagePercent = 0;
+  }
+
+  gDisplay.renderBootScreen(gBootScreenModel);
+}
+
 bool onSaveConfiguration(void * /*context*/) {
   collectSettingsAssignmentsFromUi();
   classifyAssignedSamplesAndLog();
+  loadClassifiedRamSamplesAndLog();
   const bool ok = SettingsStore::saveToSd(gSettings);
   Serial.printf("Settings save: %s, assignments=%d\n",
                 ok ? "OK" : "FAILED",
                 gSettings.assignmentCount);
   return ok;
+}
+
+void onBootScreenInputEvent(const Input::Event & /*event*/, void * /*context*/) {
+  gBootScreenDismissRequested = true;
 }
 
 void onInputEvent(const Input::Event &event, void * /*context*/) {
@@ -193,21 +230,6 @@ void setup() {
   delay(200);
   Serial.println("Booting Samplotron...");
 
-  const bool sdReady = StorageSD::init();
-  if (sdReady) {
-    loadSamplesFromSd();
-    const bool loaded = SettingsStore::loadFromSd(gSettings);
-    Serial.printf("Settings load: %s, assignments=%d, ram_budget=%lu, preload=%.2f\n",
-                  loaded ? "OK" : "DEFAULT",
-                  gSettings.assignmentCount,
-                  static_cast<unsigned long>(gSettings.sampleRamBudgetBytes),
-                  static_cast<double>(gSettings.preloadThresholdSeconds));
-  } else {
-    Serial.println("Continuing without SD (input/display debug still active).");
-    gSampleCount = 0;
-    SettingsStore::applyDefaults(gSettings);
-  }
-
   if (!CodecES8388::init()) {
     Serial.println("Codec init failed");
   } else {
@@ -220,14 +242,45 @@ void setup() {
     Serial.println("Display OK");
   }
 
+  SettingsStore::applyDefaults(gSettings);
+  gClassificationReport = SampleClassifier::ClassificationReport{};
+  refreshBootScreenMetrics(true);
+
+  const bool sdReady = StorageSD::init();
+  if (sdReady) {
+    loadSamplesFromSd();
+    refreshBootScreenMetrics(true);
+    const bool loaded = SettingsStore::loadFromSd(gSettings);
+    Serial.printf("Settings load: %s, assignments=%d, ram_budget=%lu, preload=%.2f\n",
+                  loaded ? "OK" : "DEFAULT",
+                  gSettings.assignmentCount,
+                  static_cast<unsigned long>(gSettings.sampleRamBudgetBytes),
+                  static_cast<double>(gSettings.preloadThresholdSeconds));
+    refreshBootScreenMetrics(true);
+  } else {
+    Serial.println("Continuing without SD (input/display debug still active).");
+    gSampleCount = 0;
+    SettingsStore::applyDefaults(gSettings);
+    refreshBootScreenMetrics(true);
+  }
+
+  gInput.begin();
   gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
   applySettingsAssignmentsToUi();
   classifyAssignedSamplesAndLog();
+  loadClassifiedRamSamplesAndLog();
+  refreshBootScreenMetrics(false);
+
+  const unsigned long bootScreenUntilMs = millis() + 5000UL;
+  while (!gBootScreenDismissRequested && millis() < bootScreenUntilMs) {
+    gInput.update(onBootScreenInputEvent, nullptr);
+    delay(5);
+  }
+
   gUi.setPreviewCallback(onPreviewSample, nullptr);
   gUi.setSaveCallback(onSaveConfiguration, nullptr);
   gDisplay.renderUi(gUi);
 
-  gInput.begin();
   gAudio.begin();
   Serial.println("Sampler ready");
 }
