@@ -31,7 +31,7 @@ class Ui {
     State state = State::Main;
     bool dirty = true;
 
-    int mainSelection = 0;  // 0:LIB 1:VOL 2:PITCH 3:SAVE
+    int mainSelection = 0;  // 0:LIB 1:VOL 2:SAVE
     int currentSampleIndex = -1;
     int sampleCount = 0;
 
@@ -40,12 +40,13 @@ class Ui {
     int lastMidiNote = -1;
 
     int currentVolume = 0;
-    int currentPitch = 0;
 
     int libraryWindowStart = 0;
     int assignedNoteForSelectedSample = -1;
     bool showSavedFeedback = false;
     bool lastSaveSucceeded = true;
+    bool hasUnsavedChanges = false;
+    bool midiPulseActive = false;
   };
 
   using OnPreviewSampleCallback = void (*)(int sampleIndex, void *context);
@@ -64,10 +65,13 @@ class Ui {
   bool hasSamples() const;
   bool setMidiAssignment(int note, int sampleIndex);
   int assignedSampleForMidiNote(int note) const;
+  void reportTriggeredSample(int sampleIndex);
+  void clearUnsavedChanges();
 
  private:
-  static constexpr int kMenuItems = 4;
+  static constexpr int kMenuItems = 3;
   static constexpr unsigned long kSaveFeedbackMs = 1000;
+  static constexpr unsigned long kMidiPulseMs = 100;
 
   void markDirty();
   void updateDerivedModel();
@@ -92,11 +96,12 @@ class Ui {
   int mainSelection_ = 0;
   int libraryWindowStart_ = 0;
   int sampleVolumes_[kMaxSamples] = {0};
-  int samplePitches_[kMaxSamples] = {0};
   int sampleForMidiNote_[128] = {0};  // -1 means unassigned.
 
   bool saveCompletedPending_ = false;
   bool lastSaveSucceeded_ = true;
+  bool hasUnsavedChanges_ = false;
+  unsigned long midiPulseUntilMs_ = 0;
   unsigned long saveFeedbackUntilMs_ = 0;
 
   State state_ = State::Main;

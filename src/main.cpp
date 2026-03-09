@@ -110,22 +110,21 @@ const SampleClassifier::AssignedSampleClassification *findClassificationByPath(c
 }
 
 void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
-  const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
-  if (!entry) {
-    Serial.printf("No active assignment for MIDI note %d\n", midiNote);
+  const int sampleIndex = gUi.assignedSampleForMidiNote(midiNote);
+  if (sampleIndex < 0 || sampleIndex >= gSampleCount) {
+    Serial.printf("No assignment for MIDI note %d\n", midiNote);
     return;
   }
-  if (entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Unavailable) {
-    Serial.printf("Assignment unavailable for MIDI note %d (%s)\n",
-                  midiNote,
-                  entry->path.c_str());
-    return;
-  }
+  gUi.reportTriggeredSample(sampleIndex);
+  const String &assignedPath = gSamplePaths[sampleIndex];
 
-  if (entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Ram) {
+  const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
+  const bool hasPreparedEntry = (entry && entry->path == assignedPath);
+
+  if (hasPreparedEntry && entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Ram) {
     SampleRamManager::LoadedSampleData loadedData;
     const SampleClassifier::AssignedSampleClassification *classified =
-        findClassificationByPath(entry->path);
+      findClassificationByPath(entry->path);
     if (classified && SampleRamManager::getLoadedSampleDataByPath(entry->path, loadedData)) {
       const bool played = gAudio.playSampleRam(loadedData.data,
                                                loadedData.dataBytes,
@@ -144,16 +143,24 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
       if (DebugFlags::kEnableDebugLogs) {
         Serial.printf("RAM playback failed for note=%d, fallback to stream path=%s\n",
                       midiNote,
-                      entry->path.c_str());
+                      assignedPath.c_str());
       }
     }
   }
 
-  Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",
-                midiNote,
-                ActiveSampleRegistry::effectiveStorageModeLabel(entry->effectiveMode),
-                entry->path.c_str());
-  gAudio.playSamplePath(entry->path);
+  if (DebugFlags::kEnableDebugLogs) {
+    if (hasPreparedEntry) {
+      Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",
+                    midiNote,
+                    ActiveSampleRegistry::effectiveStorageModeLabel(entry->effectiveMode),
+                    assignedPath.c_str());
+    } else {
+      Serial.printf("PLAY note=%d via UI assignment (unprepared), stream path=%s\n",
+                    midiNote,
+                    assignedPath.c_str());
+    }
+  }
+  gAudio.playSamplePath(assignedPath);
 }
 
 int findSampleIndexByPath(const String &path) {
@@ -377,6 +384,7 @@ void setup() {
   gUi.begin(gSampleNames, gSamplePaths, gSampleCount);
   gMidi.begin(&gUi);
   applySettingsAssignmentsToUi();
+  gUi.clearUnsavedChanges();
   classifyAssignedSamplesAndLog();
   loadClassifiedRamSamplesAndLog();
   buildActiveRegistryAndLog();
@@ -399,6 +407,7 @@ void setup() {
 
 void loop() {
   gAudio.update();
+  gMidi.update();
   gInput.update(onInputEvent, nullptr);
   gUi.update();
   gDisplay.update();

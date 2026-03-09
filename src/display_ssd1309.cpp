@@ -100,6 +100,7 @@ void DisplaySsd1309::update() {
       renderSaving();
       break;
   }
+  renderTopRightIndicators(model);
   gDisplay.sendBuffer();
   dirty_ = false;
 }
@@ -146,18 +147,14 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   snprintf(volLine, sizeof(volLine), "Vol:%3d", model.currentVolume);
   gDisplay.drawStr(0, 26, volLine);
 
-  char pitchLine[24];
-  snprintf(pitchLine, sizeof(pitchLine), "Pitch:%+3d", model.currentPitch);
-  gDisplay.drawStr(68, 26, pitchLine);
-
   if (model.showSavedFeedback) {
     gDisplay.drawStr(0, 36, model.lastSaveSucceeded ? "Saved" : "Save ERR");
   }
 
-  static const char *kItems[4] = {"LIB", "VOL", "PITCH", "SAVE"};
+  static const char *kItems[3] = {"LIB", "VOL", "SAVE"};
   const int y = 48;
-  const int itemW = 32;
-  for (int i = 0; i < 4; i++) {
+  const int itemW = 42;
+  for (int i = 0; i < 3; i++) {
     const int x = i * itemW;
     if (i == model.mainSelection) {
       gDisplay.setDrawColor(1);
@@ -247,4 +244,14 @@ void DisplaySsd1309::renderSaving() {
   gDisplay.setFont(u8g2_font_5x8_tf);
   gDisplay.drawStr(0, 38, "Persisting configuration");
   gDisplay.drawStr(0, 62, "No encoder action during save");
+}
+
+void DisplaySsd1309::renderTopRightIndicators(const Ui::RenderModel &model) {
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  if (model.hasUnsavedChanges) {
+    gDisplay.drawStr(116, 8, "*");
+  }
+  if (model.midiPulseActive) {
+    gDisplay.drawDisc(124, 4, 2, U8G2_DRAW_ALL);
+  }
 }

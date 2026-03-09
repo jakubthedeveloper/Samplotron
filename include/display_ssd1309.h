@@ -21,6 +21,7 @@ class DisplaySsd1309 {
  private:
   static String midiNoteLabel(int note);
   static String sampleLabel(int sampleIndex, const String &sampleName);
+  void renderTopRightIndicators(const Ui::RenderModel &model);
   void renderMain(const Ui::RenderModel &model, const Ui &ui);
   void renderLibrary(const Ui::RenderModel &model, const Ui &ui);
   void renderAssign(const Ui::RenderModel &model, const Ui &ui);

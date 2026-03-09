@@ -6,8 +6,7 @@ namespace {
 
 constexpr int kMainLib = 0;
 constexpr int kMainVol = 1;
-constexpr int kMainPitch = 2;
-constexpr int kMainSave = 3;
+constexpr int kMainSave = 2;
 constexpr int kLibraryWindowSize = 3;
 
 int clampValue(int value, int minValue, int maxValue) {
@@ -25,11 +24,9 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
 
   for (int i = 0; i < sampleCount_; i++) {
     sampleVolumes_[i] = 100;
-    samplePitches_[i] = 0;
   }
   for (int i = sampleCount_; i < kMaxSamples; i++) {
     sampleVolumes_[i] = 0;
-    samplePitches_[i] = 0;
   }
   for (int i = 0; i < 128; i++) {
     sampleForMidiNote_[i] = -1;
@@ -43,6 +40,8 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
   state_ = State::Main;
   saveCompletedPending_ = false;
   lastSaveSucceeded_ = true;
+  hasUnsavedChanges_ = false;
+  midiPulseUntilMs_ = 0;
   saveFeedbackUntilMs_ = 0;
 
   markDirty();
@@ -65,6 +64,7 @@ void Ui::handleEvent(const Event &event) {
 
   if (event.type == EventType::MidiNoteOn) {
     lastMidiNote_ = clampValue(event.value, 0, 127);
+    midiPulseUntilMs_ = millis() + kMidiPulseMs;
     if (state_ == State::AssignNote) {
       setMidiAssignment(lastMidiNote_, currentSampleIndex_);
       transitionTo(State::Library);
@@ -96,6 +96,10 @@ void Ui::update() {
   }
 
   const unsigned long now = millis();
+  if (midiPulseUntilMs_ != 0 && now >= midiPulseUntilMs_) {
+    midiPulseUntilMs_ = 0;
+    markDirty();
+  }
   if (saveFeedbackUntilMs_ != 0 && now >= saveFeedbackUntilMs_) {
     saveFeedbackUntilMs_ = 0;
     markDirty();
@@ -135,7 +139,26 @@ bool Ui::hasSamples() const {
 bool Ui::setMidiAssignment(int note, int sampleIndex) {
   if (note < 0 || note > 127) return false;
   if (sampleIndex < -1 || sampleIndex >= sampleCount_) return false;
+  bool changed = false;
+
+  if (sampleIndex >= 0) {
+    for (int i = 0; i < 128; i++) {
+      if (i != note && sampleForMidiNote_[i] == sampleIndex) {
+        sampleForMidiNote_[i] = -1;
+        changed = true;
+      }
+    }
+  }
+
+  if (sampleForMidiNote_[note] == sampleIndex) {
+    if (changed) {
+      hasUnsavedChanges_ = true;
+    }
+    markDirty();
+    return true;
+  }
   sampleForMidiNote_[note] = sampleIndex;
+  hasUnsavedChanges_ = true;
   markDirty();
   return true;
 }
@@ -163,12 +186,12 @@ void Ui::updateDerivedModel() {
   model_.assignedNoteForSelectedSample = findAssignedNoteForSample(currentSampleIndex_);
   model_.showSavedFeedback = (saveFeedbackUntilMs_ != 0);
   model_.lastSaveSucceeded = lastSaveSucceeded_;
+  model_.hasUnsavedChanges = hasUnsavedChanges_;
+  model_.midiPulseActive = (midiPulseUntilMs_ != 0);
   if (currentSampleIndex_ >= 0 && currentSampleIndex_ < sampleCount_) {
     model_.currentVolume = sampleVolumes_[currentSampleIndex_];
-    model_.currentPitch = samplePitches_[currentSampleIndex_];
   } else {
     model_.currentVolume = 0;
-    model_.currentPitch = 0;
   }
 }
 
@@ -183,10 +206,6 @@ void Ui::handleMainEvent(const Event &event) {
       if (mainSelection_ == kMainVol) {
         sampleVolumes_[currentSampleIndex_] =
             clampValue(sampleVolumes_[currentSampleIndex_] + event.value, 0, 127);
-        markDirty();
-      } else if (mainSelection_ == kMainPitch) {
-        samplePitches_[currentSampleIndex_] =
-            clampValue(samplePitches_[currentSampleIndex_] + event.value, -12, 12);
         markDirty();
       }
       return;
@@ -267,6 +286,9 @@ void Ui::startSave() {
 
 void Ui::completeSave() {
   state_ = State::Main;
+  if (lastSaveSucceeded_) {
+    hasUnsavedChanges_ = false;
+  }
   saveFeedbackUntilMs_ = millis() + kSaveFeedbackMs;
   markDirty();
 }
@@ -279,6 +301,18 @@ void Ui::triggerPreview(int sampleIndex) {
   if (sampleIndex < 0 || sampleIndex >= sampleCount_) return;
   if (onPreview_) onPreview_(sampleIndex, previewContext_);
   lastTriggeredSampleIndex_ = sampleIndex;
+  markDirty();
+}
+
+void Ui::reportTriggeredSample(int sampleIndex) {
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return;
+  lastTriggeredSampleIndex_ = sampleIndex;
+  markDirty();
+}
+
+void Ui::clearUnsavedChanges() {
+  if (!hasUnsavedChanges_) return;
+  hasUnsavedChanges_ = false;
   markDirty();
 }
 
