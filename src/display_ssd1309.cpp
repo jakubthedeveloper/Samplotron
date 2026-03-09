@@ -126,14 +126,14 @@ String DisplaySsd1309::sampleLabel(int sampleIndex, const String &sampleName) {
 
 void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   gDisplay.setFont(u8g2_font_5x8_tf);
+  const bool hasLastSample = (model.lastTriggeredSampleIndex >= 0);
+  const bool showSave = model.hasUnsavedChanges;
 
-  String lastSample = "Last: ";
+  String currentSample = "----";
   if (model.lastTriggeredSampleIndex >= 0) {
-    lastSample += sampleLabel(model.lastTriggeredSampleIndex, model.lastTriggeredSampleName);
-  } else {
-    lastSample += "---";
+    currentSample = sampleLabel(model.lastTriggeredSampleIndex, model.lastTriggeredSampleName);
   }
-  gDisplay.drawStr(0, 8, lastSample.c_str());
+  gDisplay.drawStr(0, 8, currentSample.c_str());
 
   String midi = "MIDI: ";
   if (model.lastMidiNote >= 0) {
@@ -143,27 +143,48 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   }
   gDisplay.drawStr(0, 16, midi.c_str());
 
-  char volLine[24];
-  snprintf(volLine, sizeof(volLine), "Vol:%3d", model.currentVolume);
-  gDisplay.drawStr(0, 26, volLine);
+  if (hasLastSample) {
+    char volLine[24];
+    snprintf(volLine, sizeof(volLine), "Vol:%3d", model.currentVolume);
+    gDisplay.drawStr(0, 26, volLine);
+  }
 
   if (model.showSavedFeedback) {
     gDisplay.drawStr(0, 36, model.lastSaveSucceeded ? "Saved" : "Save ERR");
   }
 
-  static const char *kItems[3] = {"LIB", "VOL", "SAVE"};
+  const char *kItemsLibOnly[1] = {"LIB"};
+  const char *kItemsLibSave[2] = {"LIB", "SAVE"};
+  const char *kItemsLibVol[2] = {"LIB", "VOL"};
+  const char *kItemsLibVolSave[3] = {"LIB", "VOL", "SAVE"};
+
+  const char **items = nullptr;
+  int itemCount = 0;
+  if (hasLastSample && showSave) {
+    items = kItemsLibVolSave;
+    itemCount = 3;
+  } else if (hasLastSample && !showSave) {
+    items = kItemsLibVol;
+    itemCount = 2;
+  } else if (!hasLastSample && showSave) {
+    items = kItemsLibSave;
+    itemCount = 2;
+  } else {
+    items = kItemsLibOnly;
+    itemCount = 1;
+  }
   const int y = 48;
-  const int itemW = 42;
-  for (int i = 0; i < 3; i++) {
+  const int itemW = 32;
+  for (int i = 0; i < itemCount; i++) {
     const int x = i * itemW;
     if (i == model.mainSelection) {
       gDisplay.setDrawColor(1);
       gDisplay.drawBox(x, y - 7, itemW, 9);
       gDisplay.setDrawColor(0);
-      gDisplay.drawStr(x + 2, y, kItems[i]);
+      gDisplay.drawStr(x + 2, y, items[i]);
       gDisplay.setDrawColor(1);
     } else {
-      gDisplay.drawStr(x + 2, y, kItems[i]);
+      gDisplay.drawStr(x + 2, y, items[i]);
     }
   }
 
@@ -240,10 +261,9 @@ void DisplaySsd1309::renderAssign(const Ui::RenderModel &model, const Ui &ui) {
 
 void DisplaySsd1309::renderSaving() {
   gDisplay.setFont(u8g2_font_6x12_tf);
-  gDisplay.drawStr(0, 22, "SAVING...");
+  gDisplay.drawStr(0, 22, "Saving...");
   gDisplay.setFont(u8g2_font_5x8_tf);
-  gDisplay.drawStr(0, 38, "Persisting configuration");
-  gDisplay.drawStr(0, 62, "No encoder action during save");
+  gDisplay.drawStr(0, 38, "Please wait");
 }
 
 void DisplaySsd1309::renderTopRightIndicators(const Ui::RenderModel &model) {

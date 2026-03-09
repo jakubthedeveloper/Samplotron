@@ -21,6 +21,12 @@ bool isNonEmptyPath(const String &path) {
   return path.length() > 0;
 }
 
+uint8_t clampVolume(long volume) {
+  if (volume < 0) return 0;
+  if (volume > 127) return 127;
+  return static_cast<uint8_t>(volume);
+}
+
 void ensureParentDirectoryExists(const char *path) {
   String filePath(path);
   const int slash = filePath.lastIndexOf('/');
@@ -88,6 +94,7 @@ bool loadFromSd(SamplerSettings &settings) {
 
     const long note = assignment["note"] | -1;
     const char *pathCStr = assignment["sample_path"] | "";
+    const long volume = assignment["volume"] | 100;
     const String samplePath(pathCStr);
 
     if (!isValidNote(note) || !isNonEmptyPath(samplePath)) {
@@ -96,6 +103,7 @@ bool loadFromSd(SamplerSettings &settings) {
 
     settings.assignments[settings.assignmentCount].note = static_cast<uint8_t>(note);
     settings.assignments[settings.assignmentCount].samplePath = samplePath;
+    settings.assignments[settings.assignmentCount].volume = clampVolume(volume);
     settings.assignmentCount++;
   }
 
@@ -122,6 +130,7 @@ bool saveToSd(const SamplerSettings &settings) {
     JsonObject entry = assignments.createNestedObject();
     entry["note"] = assignment.note;
     entry["sample_path"] = assignment.samplePath;
+    entry["volume"] = assignment.volume;
   }
 
   SD.remove(kSettingsPath);

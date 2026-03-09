@@ -65,13 +65,17 @@ class Ui {
   bool hasSamples() const;
   bool setMidiAssignment(int note, int sampleIndex);
   int assignedSampleForMidiNote(int note) const;
+  bool setSampleVolume(int sampleIndex, int volume);
+  int sampleVolumeForSample(int sampleIndex) const;
   void reportTriggeredSample(int sampleIndex);
+  void clearTriggeredSample();
   void clearUnsavedChanges();
 
  private:
   static constexpr int kMenuItems = 3;
   static constexpr unsigned long kSaveFeedbackMs = 1000;
   static constexpr unsigned long kMidiPulseMs = 100;
+  static constexpr unsigned long kSavingScreenMinMs = 1000;
 
   void markDirty();
   void updateDerivedModel();
@@ -99,8 +103,11 @@ class Ui {
   int sampleForMidiNote_[128] = {0};  // -1 means unassigned.
 
   bool saveCompletedPending_ = false;
+  bool saveRunPending_ = false;
+  bool saveExecutionArmed_ = false;
   bool lastSaveSucceeded_ = true;
   bool hasUnsavedChanges_ = false;
+  unsigned long saveCompleteAfterMs_ = 0;
   unsigned long midiPulseUntilMs_ = 0;
   unsigned long saveFeedbackUntilMs_ = 0;
 

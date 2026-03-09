@@ -15,6 +15,24 @@ int clampValue(int value, int minValue, int maxValue) {
   return value;
 }
 
+int mainMenuItemsCount(bool hasLastSample, bool hasUnsavedChanges) {
+  int count = 1;  // LIB
+  if (hasLastSample) count++;
+  if (hasUnsavedChanges) count++;
+  return count;
+}
+
+int logicalMainItemForSelection(int selection, bool hasLastSample, bool hasUnsavedChanges) {
+  if (selection == 0) return kMainLib;
+  int cursor = 1;
+  if (hasLastSample) {
+    if (selection == cursor) return kMainVol;
+    cursor++;
+  }
+  if (hasUnsavedChanges && selection == cursor) return kMainSave;
+  return kMainLib;
+}
+
 }  // namespace
 
 void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleCount) {
@@ -39,8 +57,11 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
   libraryWindowStart_ = 0;
   state_ = State::Main;
   saveCompletedPending_ = false;
+  saveRunPending_ = false;
+  saveExecutionArmed_ = false;
   lastSaveSucceeded_ = true;
   hasUnsavedChanges_ = false;
+  saveCompleteAfterMs_ = 0;
   midiPulseUntilMs_ = 0;
   saveFeedbackUntilMs_ = 0;
 
@@ -90,9 +111,27 @@ void Ui::handleEvent(const Event &event) {
 }
 
 void Ui::update() {
-  if (saveCompletedPending_) {
+  if (saveCompletedPending_ && millis() >= saveCompleteAfterMs_) {
     saveCompletedPending_ = false;
     completeSave();
+  }
+
+  if (state_ == State::Saving && saveRunPending_) {
+    // Let display render "Saving..." first, then execute blocking save on next update cycle.
+    if (!saveExecutionArmed_) {
+      saveExecutionArmed_ = true;
+    } else {
+      if (!onSave_) {
+        logNotImplemented("save_configuration_callback_missing");
+        lastSaveSucceeded_ = false;
+      } else {
+        lastSaveSucceeded_ = onSave_(saveContext_);
+      }
+      saveRunPending_ = false;
+      saveCompletedPending_ = true;
+      saveCompleteAfterMs_ = millis() + kSavingScreenMinMs;
+      markDirty();
+    }
   }
 
   const unsigned long now = millis();
@@ -168,12 +207,32 @@ int Ui::assignedSampleForMidiNote(int note) const {
   return sampleForMidiNote_[note];
 }
 
+bool Ui::setSampleVolume(int sampleIndex, int volume) {
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return false;
+  const int clamped = clampValue(volume, 0, 127);
+  if (sampleVolumes_[sampleIndex] == clamped) return true;
+  sampleVolumes_[sampleIndex] = clamped;
+  hasUnsavedChanges_ = true;
+  markDirty();
+  return true;
+}
+
+int Ui::sampleVolumeForSample(int sampleIndex) const {
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return 127;
+  return sampleVolumes_[sampleIndex];
+}
+
 void Ui::markDirty() {
   updateDerivedModel();
   model_.dirty = true;
 }
 
 void Ui::updateDerivedModel() {
+  const bool hasLastSample =
+      (lastTriggeredSampleIndex_ >= 0 && lastTriggeredSampleIndex_ < sampleCount_);
+  mainSelection_ =
+      wrapIndex(mainSelection_, mainMenuItemsCount(hasLastSample, hasUnsavedChanges_));
+
   model_.state = state_;
   model_.mainSelection = mainSelection_;
   model_.currentSampleIndex = currentSampleIndex_;
@@ -188,31 +247,41 @@ void Ui::updateDerivedModel() {
   model_.lastSaveSucceeded = lastSaveSucceeded_;
   model_.hasUnsavedChanges = hasUnsavedChanges_;
   model_.midiPulseActive = (midiPulseUntilMs_ != 0);
-  if (currentSampleIndex_ >= 0 && currentSampleIndex_ < sampleCount_) {
-    model_.currentVolume = sampleVolumes_[currentSampleIndex_];
+  if (hasLastSample) {
+    model_.currentVolume = sampleVolumes_[lastTriggeredSampleIndex_];
   } else {
     model_.currentVolume = 0;
   }
 }
 
 void Ui::handleMainEvent(const Event &event) {
+  const bool hasLastSample =
+      (lastTriggeredSampleIndex_ >= 0 && lastTriggeredSampleIndex_ < sampleCount_);
+  const int menuItems = mainMenuItemsCount(hasLastSample, hasUnsavedChanges_);
+  const int logicalSelected =
+      logicalMainItemForSelection(mainSelection_, hasLastSample, hasUnsavedChanges_);
+
   switch (event.type) {
     case EventType::LeftRotate:
-      mainSelection_ = wrapIndex(mainSelection_ + event.value, kMenuItems);
+      mainSelection_ = wrapIndex(mainSelection_ + event.value, menuItems);
       markDirty();
       return;
     case EventType::RightRotate:
-      if (currentSampleIndex_ < 0 || currentSampleIndex_ >= sampleCount_) return;
-      if (mainSelection_ == kMainVol) {
-        sampleVolumes_[currentSampleIndex_] =
-            clampValue(sampleVolumes_[currentSampleIndex_] + event.value, 0, 127);
+      if (!hasLastSample) return;
+      if (logicalSelected == kMainVol) {
+        const int previous = sampleVolumes_[lastTriggeredSampleIndex_];
+        sampleVolumes_[lastTriggeredSampleIndex_] =
+            clampValue(sampleVolumes_[lastTriggeredSampleIndex_] + event.value, 0, 127);
+        if (sampleVolumes_[lastTriggeredSampleIndex_] != previous) {
+          hasUnsavedChanges_ = true;
+        }
         markDirty();
       }
       return;
     case EventType::RightClick:
-      if (mainSelection_ == kMainLib) {
+      if (logicalSelected == kMainLib) {
         transitionTo(State::Library);
-      } else if (mainSelection_ == kMainSave) {
+      } else if (logicalSelected == kMainSave) {
         transitionTo(State::Saving);
       }
       return;
@@ -274,18 +343,17 @@ void Ui::transitionTo(State state) {
 }
 
 void Ui::startSave() {
-  if (!onSave_) {
-    logNotImplemented("save_configuration_callback_missing");
-    lastSaveSucceeded_ = false;
-  } else {
-    lastSaveSucceeded_ = onSave_(saveContext_);
-  }
-  saveCompletedPending_ = true;
+  saveRunPending_ = true;
+  saveExecutionArmed_ = false;
+  saveCompletedPending_ = false;
+  saveCompleteAfterMs_ = 0;
   markDirty();
 }
 
 void Ui::completeSave() {
   state_ = State::Main;
+  saveRunPending_ = false;
+  saveExecutionArmed_ = false;
   if (lastSaveSucceeded_) {
     hasUnsavedChanges_ = false;
   }
@@ -307,6 +375,12 @@ void Ui::triggerPreview(int sampleIndex) {
 void Ui::reportTriggeredSample(int sampleIndex) {
   if (sampleIndex < 0 || sampleIndex >= sampleCount_) return;
   lastTriggeredSampleIndex_ = sampleIndex;
+  markDirty();
+}
+
+void Ui::clearTriggeredSample() {
+  if (lastTriggeredSampleIndex_ < 0) return;
+  lastTriggeredSampleIndex_ = -1;
   markDirty();
 }
 

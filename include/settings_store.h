@@ -8,6 +8,7 @@ namespace SettingsStore {
 struct MidiAssignment {
   uint8_t note = 0;
   String samplePath;
+  uint8_t volume = 100;
 };
 
 struct SamplerSettings {

@@ -87,7 +87,8 @@ void loadSamplesFromSd() {
 void onPreviewSample(int sampleIndex, void * /*context*/) {
   if (sampleIndex < 0 || sampleIndex >= gSampleCount) return;
   Serial.printf("PLAY sample: %s\n", gSampleNames[sampleIndex].c_str());
-  gAudio.playSamplePath(gSamplePaths[sampleIndex]);
+  const int volume = gUi.sampleVolumeForSample(sampleIndex);
+  gAudio.playSamplePath(gSamplePaths[sampleIndex], static_cast<uint8_t>(volume));
 }
 
 const ActiveSampleRegistry::Entry *findActiveRegistryEntryForNote(int note) {
@@ -112,11 +113,13 @@ const SampleClassifier::AssignedSampleClassification *findClassificationByPath(c
 void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
   const int sampleIndex = gUi.assignedSampleForMidiNote(midiNote);
   if (sampleIndex < 0 || sampleIndex >= gSampleCount) {
+    gUi.clearTriggeredSample();
     Serial.printf("No assignment for MIDI note %d\n", midiNote);
     return;
   }
   gUi.reportTriggeredSample(sampleIndex);
   const String &assignedPath = gSamplePaths[sampleIndex];
+  const uint8_t assignedVolume = static_cast<uint8_t>(gUi.sampleVolumeForSample(sampleIndex));
 
   const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
   const bool hasPreparedEntry = (entry && entry->path == assignedPath);
@@ -130,7 +133,8 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
                                                loadedData.dataBytes,
                                                classified->channelCount,
                                                classified->sampleRate,
-                                               classified->bitsPerSample);
+                                               classified->bitsPerSample,
+                                               assignedVolume);
       if (played) {
         if (DebugFlags::kEnableDebugLogs) {
           Serial.printf("PLAY note=%d via RAM path=%s bytes=%lu\n",
@@ -160,7 +164,7 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
                     assignedPath.c_str());
     }
   }
-  gAudio.playSamplePath(assignedPath);
+  gAudio.playSamplePath(assignedPath, assignedVolume);
 }
 
 int findSampleIndexByPath(const String &path) {
@@ -186,6 +190,7 @@ void applySettingsAssignmentsToUi() {
     if (gUi.setMidiAssignment(assignment.note, sampleIndex)) {
       applied++;
     }
+    gUi.setSampleVolume(sampleIndex, assignment.volume);
   }
   if (DebugFlags::kEnableDebugLogs) {
     Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
@@ -206,6 +211,7 @@ void collectSettingsAssignmentsFromUi() {
     SettingsStore::MidiAssignment &entry = gSettings.assignments[gSettings.assignmentCount];
     entry.note = static_cast<uint8_t>(note);
     entry.samplePath = gSamplePaths[sampleIndex];
+    entry.volume = static_cast<uint8_t>(gUi.sampleVolumeForSample(sampleIndex));
     gSettings.assignmentCount++;
   }
 }

@@ -175,7 +175,7 @@ void Audio::update() {
   }
 }
 
-void Audio::playSamplePath(const String &samplePath) {
+void Audio::playSamplePath(const String &samplePath, uint8_t volume) {
   Serial.println(samplePath);
 
   if (wav_ && wav_->isRunning()) {
@@ -188,6 +188,7 @@ void Audio::playSamplePath(const String &samplePath) {
 
   file_ = &gSdSource;
   if (file_->open(samplePath.c_str()) && wav_ && file_->isOpen()) {
+    applyVolume(volume);
     resetI2SIfNeeded();
     if (!wav_->begin(file_, out_)) {
       Serial.println("WAV start failed");
@@ -206,7 +207,8 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                           uint32_t dataBytes,
                           uint16_t channelCount,
                           uint32_t sampleRate,
-                          uint16_t bitsPerSample) {
+                          uint16_t bitsPerSample,
+                          uint8_t volume) {
   if (!pcmData || dataBytes == 0) return false;
 
   if (wav_ && wav_->isRunning()) {
@@ -224,6 +226,7 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
   }
 
   if (wav_ && file_->isOpen()) {
+    applyVolume(volume);
     resetI2SIfNeeded();
     if (!wav_->begin(file_, out_)) {
       Serial.println("RAM WAV start failed");
@@ -237,6 +240,12 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
   }
 
   return false;
+}
+
+void Audio::applyVolume(uint8_t volume) {
+  if (!out_) return;
+  const float gain = static_cast<float>(volume) / 127.0f;
+  out_->SetGain(gain);
 }
 
 void Audio::resetI2SIfNeeded() {
