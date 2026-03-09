@@ -299,5 +299,17 @@
     "Preview in LIBRARY should play the selected sample without changing mapping.",
     "ASSIGN_NOTE should only commit the new mapping after receiving a MIDI NOTE ON event.",
     "Left encoder click should remain a consistent back/cancel gesture across screens."
+  ],
+  "accepted_implementation_deviations": [
+    {
+      "id": "pitch_removed",
+      "status": "accepted",
+      "description": "PITCH control is removed from UI and persistence in current implementation."
+    },
+    {
+      "id": "storage_backend_sd_json",
+      "status": "accepted",
+      "description": "Configuration persistence uses JSON file on SD card instead of ESP32 NVS."
+    }
   ]
 }

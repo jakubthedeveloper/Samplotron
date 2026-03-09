@@ -495,5 +495,19 @@
     "Do not implement advanced cache promotion or eviction logic.",
     "Do not model the full library as fully parsed playback-ready assets at boot.",
     "Do not solve future preset architecture in this task."
+  ],
+  "accepted_implementation_deviations": [
+    {
+      "id": "fixed_preload_threshold",
+      "status": "accepted",
+      "description": "preload_threshold_seconds is not configurable from JSON in current implementation.",
+      "implementation_note": "Threshold is a fixed firmware constant."
+    },
+    {
+      "id": "assignment_volume_in_schema",
+      "status": "accepted",
+      "description": "Saved settings schema is extended with per-assignment volume.",
+      "implementation_note": "Each midi_assignments entry may include 'volume' (0..127)."
+    }
   ]
 }
