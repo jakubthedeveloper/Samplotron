@@ -7,6 +7,8 @@ on:
 jobs:
   build-main:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,3 +23,39 @@ jobs:
 
       - name: Build main firmware
         run: pio run -e esp-wrover-kit
+
+      - name: Prepare firmware files
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp .pio/build/esp-wrover-kit/firmware.bin dist/firmware.bin
+          cp .pio/build/esp-wrover-kit/bootloader.bin dist/bootloader.bin
+          cp .pio/build/esp-wrover-kit/partitions.bin dist/partitions.bin
+          BOOT_APP0="$(find "$HOME/.platformio/packages" -path "*/framework-arduinoespressif32/tools/partitions/boot_app0.bin" | head -n1)"
+          cp "$BOOT_APP0" dist/boot_app0.bin
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-main-${{ github.sha }}
+          path: |
+            dist/firmware.bin
+            dist/bootloader.bin
+            dist/partitions.bin
+            dist/boot_app0.bin
+          retention-days: 30
+
+      - name: Publish latest main release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: main-latest
+          name: Latest main firmware
+          prerelease: true
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: "dist/firmware.bin,dist/bootloader.bin,dist/partitions.bin,dist/boot_app0.bin"
+          body: |
+            Automatically updated from branch `main`.
+            Commit: `${{ github.sha }}`
+            Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

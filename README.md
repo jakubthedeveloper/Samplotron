@@ -1,5 +1,6 @@
 # Samplotron
 [![Build Main Firmware](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml/badge.svg)](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml)
+[Latest `main` firmware.bin](https://github.com/jakubthedeveloper/Samplotron/releases/download/main-latest/firmware.bin)
 
 Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, maps samples to MIDI notes, and stores device configuration on the card.
 
@@ -25,6 +26,25 @@ Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, m
 - `make upload-main`
 4. Open serial log:
 - `make monitor`
+
+## Flashing Prebuilt Firmware (from GitHub Releases)
+
+1. Download these files from release tag [`main-latest`](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest):
+- `firmware.bin`
+- `bootloader.bin`
+- `partitions.bin`
+- `boot_app0.bin`
+2. Install esptool:
+- `python -m pip install esptool`
+3. Flash device (replace `/dev/ttyUSB0` with your port, e.g. `COM3` on Windows):
+
+```bash
+python -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash -z \
+  0x1000 bootloader.bin \
+  0x8000 partitions.bin \
+  0xe000 boot_app0.bin \
+  0x10000 firmware.bin
+```
 
 ## Controls (Short Version)
 
