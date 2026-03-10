@@ -1,4 +1,5 @@
 # Samplotron
+[![Build Main Firmware](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml/badge.svg)](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml)
 
 Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, maps samples to MIDI notes, and stores device configuration on the card.
 
