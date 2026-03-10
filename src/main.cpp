@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <SD.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 #include "codec_es8388.h"
 #include "debug_flags.h"
@@ -33,6 +36,36 @@ SampleRamManager::LoadReport gRamLoadReport;
 ActiveSampleRegistry::RegistryReport gActiveRegistryReport;
 DisplaySsd1309::BootScreenModel gBootScreenModel;
 bool gBootScreenDismissRequested = false;
+
+enum class TriggerSourceType : uint8_t {
+  StreamPath,
+  RamData,
+};
+
+struct TriggerEvent {
+  TriggerSourceType source = TriggerSourceType::StreamPath;
+  uint8_t volume = 100;
+  char path[128] = {0};
+
+  const uint8_t *ramData = nullptr;
+  uint32_t ramDataBytes = 0;
+  uint16_t channelCount = 0;
+  uint32_t sampleRate = 0;
+  uint16_t bitsPerSample = 0;
+};
+
+QueueHandle_t gTriggerQueue = nullptr;
+TaskHandle_t gAudioTaskHandle = nullptr;
+TaskHandle_t gUiTaskHandle = nullptr;
+volatile uint8_t gAudioActiveVoices = 0;
+
+constexpr uint32_t kTriggerQueueLength = 32;
+constexpr UBaseType_t kAudioTaskPriority = 6;
+constexpr UBaseType_t kUiTaskPriority = 2;
+constexpr BaseType_t kAudioTaskCore = 1;
+constexpr BaseType_t kUiTaskCore = 0;
+
+void onInputEvent(const Input::Event &event, void *context);
 
 bool isWavFile(const String &name) {
   return name.endsWith(".wav") || name.endsWith(".WAV");
@@ -84,11 +117,102 @@ void loadSamplesFromSd() {
   Serial.printf("Found %d sample(s)\n", gSampleCount);
 }
 
+bool enqueueTriggerEvent(const TriggerEvent &event) {
+  if (!gTriggerQueue) return false;
+  return xQueueSend(gTriggerQueue, &event, 0) == pdTRUE;
+}
+
+bool waitForAudioIdle(uint32_t timeoutMs) {
+  const uint32_t deadline = millis() + timeoutMs;
+  while (millis() < deadline) {
+    const bool noVoices = (gAudioActiveVoices == 0);
+    const bool noPendingTriggers = (!gTriggerQueue || uxQueueMessagesWaiting(gTriggerQueue) == 0);
+    if (noVoices && noPendingTriggers) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  return false;
+}
+
+void processTriggerEvent(const TriggerEvent &event) {
+  if (event.source == TriggerSourceType::RamData) {
+    if (event.ramData && event.ramDataBytes > 0) {
+      gAudio.playSampleRam(event.ramData,
+                           event.ramDataBytes,
+                           event.channelCount,
+                           event.sampleRate,
+                           event.bitsPerSample,
+                           event.volume);
+    }
+    return;
+  }
+
+  if (event.path[0] != '\0') {
+    gAudio.playSamplePath(String(event.path), event.volume);
+  }
+}
+
+void audioTaskEntry(void * /*param*/) {
+  gAudio.begin();
+  Serial.printf("audio_task started core=%d prio=%u\n",
+                static_cast<int>(xPortGetCoreID()),
+                static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+
+  TriggerEvent event;
+  while (true) {
+    gAudio.update();
+    const Audio::RuntimeStats stats = gAudio.runtimeStats();
+    gAudioActiveVoices = stats.activeVoices;
+
+    // Never drain the entire queue in one go; keep audio update cadence stable.
+    if (xQueueReceive(gTriggerQueue, &event, 0) == pdTRUE) {
+      // Keep output fed around trigger processing to minimize short underruns
+      // when a new voice is started while others are already active.
+      if (stats.activeVoices > 0) {
+        gAudio.update();
+      }
+      processTriggerEvent(event);
+      gAudio.update();
+      gAudioActiveVoices = gAudio.runtimeStats().activeVoices;
+      continue;
+    }
+
+    if (stats.activeVoices == 0) {
+      // When idle, block briefly waiting for new triggers instead of spinning.
+      if (xQueueReceive(gTriggerQueue, &event, pdMS_TO_TICKS(1)) == pdTRUE) {
+        processTriggerEvent(event);
+      }
+    }
+  }
+}
+
+void uiTaskEntry(void * /*param*/) {
+  Serial.printf("ui_task started core=%d prio=%u\n",
+                static_cast<int>(xPortGetCoreID()),
+                static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+  while (true) {
+    gMidi.update();
+    gInput.update(onInputEvent, nullptr);
+    gUi.update();
+    gDisplay.update();
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
 void onPreviewSample(int sampleIndex, void * /*context*/) {
   if (sampleIndex < 0 || sampleIndex >= gSampleCount) return;
-  Serial.printf("PLAY sample: %s\n", gSampleNames[sampleIndex].c_str());
-  const int volume = gUi.sampleVolumeForSample(sampleIndex);
-  gAudio.playSamplePath(gSamplePaths[sampleIndex], static_cast<uint8_t>(volume));
+  if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
+    Serial.printf("PLAY sample: %s\n", gSampleNames[sampleIndex].c_str());
+  }
+  TriggerEvent event;
+  event.source = TriggerSourceType::StreamPath;
+  event.volume = static_cast<uint8_t>(gUi.sampleVolumeForSample(sampleIndex));
+  const String &path = gSamplePaths[sampleIndex];
+  path.toCharArray(event.path, sizeof(event.path));
+  if (!enqueueTriggerEvent(event) && DebugFlags::kEnableDebugLogs) {
+    Serial.println("Trigger queue full (preview dropped)");
+  }
 }
 
 const ActiveSampleRegistry::Entry *findActiveRegistryEntryForNote(int note) {
@@ -114,7 +238,9 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
   const int sampleIndex = gUi.assignedSampleForMidiNote(midiNote);
   if (sampleIndex < 0 || sampleIndex >= gSampleCount) {
     gUi.clearTriggeredSample();
-    Serial.printf("No assignment for MIDI note %d\n", midiNote);
+    if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
+      Serial.printf("No assignment for MIDI note %d\n", midiNote);
+    }
     return;
   }
   gUi.reportTriggeredSample(sampleIndex);
@@ -124,19 +250,32 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
   const ActiveSampleRegistry::Entry *entry = findActiveRegistryEntryForNote(midiNote);
   const bool hasPreparedEntry = (entry && entry->path == assignedPath);
 
+  if (hasPreparedEntry &&
+      entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Unavailable) {
+    if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
+      Serial.printf("Playback blocked for note=%d: unsupported or missing sample path=%s\n",
+                    midiNote,
+                    assignedPath.c_str());
+    }
+    return;
+  }
+
   if (hasPreparedEntry && entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Ram) {
     SampleRamManager::LoadedSampleData loadedData;
     const SampleClassifier::AssignedSampleClassification *classified =
       findClassificationByPath(entry->path);
     if (classified && SampleRamManager::getLoadedSampleDataByPath(entry->path, loadedData)) {
-      const bool played = gAudio.playSampleRam(loadedData.data,
-                                               loadedData.dataBytes,
-                                               classified->channelCount,
-                                               classified->sampleRate,
-                                               classified->bitsPerSample,
-                                               assignedVolume);
+      TriggerEvent event;
+      event.source = TriggerSourceType::RamData;
+      event.volume = assignedVolume;
+      event.ramData = loadedData.data;
+      event.ramDataBytes = loadedData.dataBytes;
+      event.channelCount = classified->channelCount;
+      event.sampleRate = classified->sampleRate;
+      event.bitsPerSample = classified->bitsPerSample;
+      const bool played = enqueueTriggerEvent(event);
       if (played) {
-        if (DebugFlags::kEnableDebugLogs) {
+        if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
           Serial.printf("PLAY note=%d via RAM path=%s bytes=%lu\n",
                         midiNote,
                         entry->path.c_str(),
@@ -144,7 +283,7 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
         }
         return;
       }
-      if (DebugFlags::kEnableDebugLogs) {
+      if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
         Serial.printf("RAM playback failed for note=%d, fallback to stream path=%s\n",
                       midiNote,
                       assignedPath.c_str());
@@ -152,7 +291,7 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
     }
   }
 
-  if (DebugFlags::kEnableDebugLogs) {
+  if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
     if (hasPreparedEntry) {
       Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",
                     midiNote,
@@ -164,7 +303,13 @@ void onAssignedMidiNoteOn(int midiNote, void * /*context*/) {
                     assignedPath.c_str());
     }
   }
-  gAudio.playSamplePath(assignedPath, assignedVolume);
+  TriggerEvent event;
+  event.source = TriggerSourceType::StreamPath;
+  event.volume = assignedVolume;
+  assignedPath.toCharArray(event.path, sizeof(event.path));
+  if (!enqueueTriggerEvent(event) && DebugFlags::kEnableDebugLogs) {
+    Serial.println("Trigger queue full (assigned trigger dropped)");
+  }
 }
 
 int findSampleIndexByPath(const String &path) {
@@ -301,6 +446,10 @@ void refreshBootScreenMetrics(bool loading) {
 }
 
 bool onSaveConfiguration(void * /*context*/) {
+  if (!waitForAudioIdle(3000)) {
+    Serial.println("Settings save deferred: audio still active");
+    return false;
+  }
   collectSettingsAssignmentsFromUi();
   classifyAssignedSamplesAndLog();
   loadClassifiedRamSamplesAndLog();
@@ -407,14 +556,34 @@ void setup() {
   gMidi.setAssignedNoteOnCallback(onAssignedMidiNoteOn, nullptr);
   gDisplay.renderUi(gUi);
 
-  gAudio.begin();
+  gTriggerQueue = xQueueCreate(kTriggerQueueLength, sizeof(TriggerEvent));
+  if (!gTriggerQueue) {
+    Serial.println("Failed to create trigger queue");
+    return;
+  }
+
+  const BaseType_t audioTaskOk = xTaskCreatePinnedToCore(audioTaskEntry,
+                                                          "audio_task",
+                                                          6144,
+                                                          nullptr,
+                                                          kAudioTaskPriority,
+                                                          &gAudioTaskHandle,
+                                                          kAudioTaskCore);
+  const BaseType_t uiTaskOk = xTaskCreatePinnedToCore(uiTaskEntry,
+                                                       "ui_task",
+                                                       8192,
+                                                       nullptr,
+                                                       kUiTaskPriority,
+                                                       &gUiTaskHandle,
+                                                       kUiTaskCore);
+  if (audioTaskOk != pdPASS || uiTaskOk != pdPASS) {
+    Serial.println("Task creation failed");
+    return;
+  }
+
   Serial.println("Sampler ready");
 }
 
 void loop() {
-  gAudio.update();
-  gMidi.update();
-  gInput.update(onInputEvent, nullptr);
-  gUi.update();
-  gDisplay.update();
+  vTaskDelay(pdMS_TO_TICKS(1000));
 }

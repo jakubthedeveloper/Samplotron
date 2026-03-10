@@ -5,25 +5,31 @@
 
 class Audio {
  public:
-  Audio() = default;
+  static constexpr uint8_t kVoiceCount = 8;
+
+  struct RuntimeStats {
+    uint8_t activeVoices = 0;
+    uint8_t activeVoicePeak = 0;
+    uint32_t voiceStealCount = 0;
+  };
+
+  struct Impl;
+
+  Audio();
   ~Audio();
 
   void begin();
   void update();
-  void playSamplePath(const String &samplePath, uint8_t volume = 127);
+  void playSamplePath(const String &samplePath, uint8_t volume = 100);
   bool playSampleRam(const uint8_t *pcmData,
                      uint32_t dataBytes,
                      uint16_t channelCount,
                      uint32_t sampleRate,
                      uint16_t bitsPerSample,
-                     uint8_t volume = 127);
+                     uint8_t volume = 100);
+  RuntimeStats runtimeStats() const;
+  uint32_t voiceStealCount() const;
 
  private:
-  void applyVolume(uint8_t volume);
-  void resetI2SIfNeeded();
-
-  class AudioGeneratorWAV *wav_ = nullptr;
-  class AudioFileSource *file_ = nullptr;
-  class AudioOutputI2S *out_ = nullptr;
-  bool i2sWasStarted_ = false;
+  Impl *impl_ = nullptr;
 };

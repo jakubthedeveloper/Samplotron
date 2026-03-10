@@ -23,7 +23,7 @@ bool isNonEmptyPath(const String &path) {
 
 uint8_t clampVolume(long volume) {
   if (volume < 0) return 0;
-  if (volume > 127) return 127;
+  if (volume > 100) return 100;
   return static_cast<uint8_t>(volume);
 }
 

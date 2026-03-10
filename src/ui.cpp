@@ -209,7 +209,7 @@ int Ui::assignedSampleForMidiNote(int note) const {
 
 bool Ui::setSampleVolume(int sampleIndex, int volume) {
   if (sampleIndex < 0 || sampleIndex >= sampleCount_) return false;
-  const int clamped = clampValue(volume, 0, 127);
+  const int clamped = clampValue(volume, kVolumeMin, kVolumeMax);
   if (sampleVolumes_[sampleIndex] == clamped) return true;
   sampleVolumes_[sampleIndex] = clamped;
   hasUnsavedChanges_ = true;
@@ -218,7 +218,7 @@ bool Ui::setSampleVolume(int sampleIndex, int volume) {
 }
 
 int Ui::sampleVolumeForSample(int sampleIndex) const {
-  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return 127;
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return kVolumeMax;
   return sampleVolumes_[sampleIndex];
 }
 
@@ -271,7 +271,9 @@ void Ui::handleMainEvent(const Event &event) {
       if (logicalSelected == kMainVol) {
         const int previous = sampleVolumes_[lastTriggeredSampleIndex_];
         sampleVolumes_[lastTriggeredSampleIndex_] =
-            clampValue(sampleVolumes_[lastTriggeredSampleIndex_] + event.value, 0, 127);
+            clampValue(sampleVolumes_[lastTriggeredSampleIndex_] + (event.value * kVolumeStep),
+                       kVolumeMin,
+                       kVolumeMax);
         if (sampleVolumes_[lastTriggeredSampleIndex_] != previous) {
           hasUnsavedChanges_ = true;
         }

@@ -90,8 +90,10 @@ bool readWavInfo(const String &path, WavInfo &info) {
 }
 
 bool isSupportedV1Format(const WavInfo &info) {
-  return info.audioFormat == 1 && info.bitsPerSample == 16 && info.sampleRate > 0 &&
-         info.channelCount > 0;
+  return info.audioFormat == SampleClassifier::kRequiredAudioFormatPcm &&
+         info.bitsPerSample == SampleClassifier::kRequiredBitsPerSample &&
+         info.sampleRate == SampleClassifier::kRequiredSampleRate &&
+         info.channelCount == SampleClassifier::kRequiredChannelCount;
 }
 
 float durationSeconds(const WavInfo &info) {

@@ -8,6 +8,10 @@
 namespace SampleClassifier {
 
 constexpr float kFixedPreloadThresholdSeconds = 5.0f;
+constexpr uint32_t kRequiredSampleRate = 44100;
+constexpr uint16_t kRequiredChannelCount = 1;
+constexpr uint16_t kRequiredBitsPerSample = 16;
+constexpr uint16_t kRequiredAudioFormatPcm = 1;
 
 enum class StorageMode : uint8_t {
   Ram,

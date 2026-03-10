@@ -98,7 +98,8 @@ Minimal format:
 Notes:
 
 - `note`: `0..127`
-- `volume`: clamped to `0..127`
+- `volume`: clamped to `0..100`
+- `volume = 100`: full per-voice level (before fixed mixer headroom)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
 - maximum assignments: `128`
 
@@ -110,9 +111,21 @@ Current pipeline (recently updated):
 - `RAM` is used only for WAV files that meet all conditions:
   - PCM format (`audioFormat = 1`),
   - `16-bit`,
+  - `44100 Hz`,
+  - `mono`,
   - duration `<= 5.0 s`,
   - fit into the RAM budget,
 - if preload fails, the entry falls back to `STREAM`.
+- if assigned sample format is unsupported/missing, playback for that note is blocked (`UNAVAILABLE`) instead of trying to decode anyway.
+
+Playback engine behavior:
+
+- fixed `8`-voice playback pool (`Audio::kVoiceCount`),
+- each trigger allocates a free voice slot when available,
+- if all voices are active, the incoming trigger steals the oldest active voice (deterministic `oldest-voice` policy),
+- works for both SD-streamed and RAM-backed sample playback,
+- per-voice mixer gain is attenuated by a fixed headroom factor (`kPerVoiceMixHeadroomGain = 0.125`) so 8 full-scale voices can be mixed without clipping.
+- trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
 
 Important behavior:
 
@@ -139,23 +152,35 @@ Flow:
 Assignment rules:
 
 - one sample can be assigned to only one note at a time (new assignment clears older one),
-- volume is stored per sample (`0..127`), not per note.
+- volume is stored per sample (`0..100`), not per note.
 
 ## 8. Hardcoded Values (Where to Change)
 
 - UI sample limit: `Ui::kMaxSamples = 32` (`include/ui.h`)
+- Audio voice count: `Audio::kVoiceCount = 8` (`include/audio.h`)
 - Default RAM budget: `kDefaultSampleRamBudgetBytes = 1 MB` (`include/settings_store.h`)
 - RAM preload threshold: `kFixedPreloadThresholdSeconds = 5.0f` (`include/sample_classifier.h`)
 - Config path: `"/sampler_config.json"` (`src/settings_store.cpp`)
 - JSON document capacity: `12288` (`src/settings_store.cpp`)
 - Button debounce: `35 ms` (`include/input.h`)
 - Encoder detent: `4` ticks (`include/input.h`)
+- Volume change step in UI: `5` per right-encoder tick on `VOL` (`src/ui.cpp`)
 - Long press (right encoder): `700 ms` (`include/input.h`)
 - Boot screen duration: `5000 ms` (`src/main.cpp`)
+- Audio task core/priority: core `1`, priority `6` (`src/main.cpp`)
+- UI task core/priority: core `0`, priority `2` (`src/main.cpp`)
+- Trigger queue length: `32` (`src/main.cpp`)
+- Voice fade-in to reduce trigger click: `kVoiceFadeInUs = 0` (`src/audio.cpp`, disabled by default to preserve transients)
+- Audio mixer buffer size: `kMixerBufferSamples = 512` (`src/audio.cpp`)
 - Minimum saving screen: `1000 ms` (`include/ui.h`)
 - "Saved" feedback duration: `1000 ms` (`include/ui.h`)
 - MIDI pulse indicator duration: `100 ms` (`include/ui.h`)
 - Global debug logs switch: `DebugFlags::kEnableDebugLogs` (`include/debug_flags.h`)
+- Per-trigger playback logs switch: `DebugFlags::kEnablePerTriggerPlaybackLogs` (`include/debug_flags.h`)
+- Input event logs switch: `DebugFlags::kEnableInputEventLogs` (`include/debug_flags.h`)
+- Runtime audio diagnostics log switch: `DebugFlags::kEnableRuntimeAudioDiagLogs` (`include/debug_flags.h`)
+- `AUDIO_DIAG` includes trigger handling timing: `play_max_us`, `slow_plays`, `play_count` (`src/audio.cpp`)
+- `AUDIO_DIAG` includes I2S rate-set counters: `rate_set_calls`, `rate_set_skipped`, `rate_set_applied` (`src/audio.cpp`)
 
 ## 9. Useful Commands
 
@@ -169,6 +194,9 @@ Assignment rules:
 - `make build-debug-midi`
 - `make upload-debug-midi`
 - `make monitor`
+- `make convert-samples SAMPLES_DIR=/path/to/samples` (requires `ffmpeg`, converts `*.wav` in that folder to PCM16/44.1kHz/mono in-place)
+- `make convert-samples /path/to/samples` (equivalent positional form)
+  - conversion runs `ffmpeg` with `-nostdin` to avoid stdin conflicts in batch processing.
 
 ### Direct PlatformIO
 
@@ -180,13 +208,13 @@ Assignment rules:
 
 ## 10. Module Map (Code Orientation)
 
-- `src/main.cpp`: startup orchestration, SD, UI, MIDI, settings save, RAM preload
+- `src/main.cpp`: startup orchestration, SD, settings load/save, trigger queue, task startup
 - `src/ui.cpp`: UI state, navigation, assignment logic, save flow
 - `src/display_ssd1309.cpp`: OLED screen rendering
 - `src/input.cpp`: MCP23017 reading, encoder decode, click/long-press handling
-- `src/midi.cpp`: MIDI parser (running status), NOTE_ON -> UI + callback
+- `src/midi.cpp`: MIDI parser (running status), NOTE_ON -> UI + trigger callback
 - `src/settings_store.cpp`: JSON load/save on SD
 - `src/sample_classifier.cpp`: assigned sample classification (RAM/STREAM/error modes)
 - `src/sample_ram_manager.cpp`: pool allocation and WAV data preload into RAM
 - `src/active_sample_registry.cpp`: final active-sample registry after fallback handling
-- `src/audio.cpp`: playback from SD and RAM via `ESP8266Audio`
+- `src/audio.cpp`: 8-voice playback engine (SD + RAM), mixer, and oldest-voice stealing

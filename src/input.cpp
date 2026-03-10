@@ -2,6 +2,7 @@
 
 #include <Wire.h>
 
+#include "debug_flags.h"
 #include "pins.h"
 
 namespace {
@@ -124,7 +125,9 @@ void Input::update(OnEventCallback callback, void *context) {
       encoderTicks_[i] = static_cast<int8_t>(encoderTicks_[i] + delta);
       if (encoderTicks_[i] >= kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
-        Serial.printf("ENC%d CW\n", i + 1);
+        if (DebugFlags::kEnableInputEventLogs) {
+          Serial.printf("ENC%d CW\n", i + 1);
+        }
         if (callback) {
           const Event event = {
               (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
@@ -134,7 +137,9 @@ void Input::update(OnEventCallback callback, void *context) {
         }
       } else if (encoderTicks_[i] <= -kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
-        Serial.printf("ENC%d CCW\n", i + 1);
+        if (DebugFlags::kEnableInputEventLogs) {
+          Serial.printf("ENC%d CCW\n", i + 1);
+        }
         if (callback) {
           const Event event = {
               (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
@@ -155,7 +160,9 @@ void Input::update(OnEventCallback callback, void *context) {
     if ((millis() - switchLastDebounceMs_[i]) >= kDebounceMs &&
         switchRaw != switchStableState_[i]) {
       switchStableState_[i] = switchRaw;
-      Serial.printf("ENC%d %s\n", i + 1, (switchStableState_[i] == LOW) ? "PRESS" : "RELEASE");
+      if (DebugFlags::kEnableInputEventLogs) {
+        Serial.printf("ENC%d %s\n", i + 1, (switchStableState_[i] == LOW) ? "PRESS" : "RELEASE");
+      }
       if (switchStableState_[i] == LOW) {
         switchPressStartMs_[i] = now;
         longPressFired_[i] = false;
@@ -171,7 +178,9 @@ void Input::update(OnEventCallback callback, void *context) {
     if (i == 1 && switchStableState_[i] == LOW && !longPressFired_[i] &&
         (now - switchPressStartMs_[i]) >= kLongPressMs) {
       longPressFired_[i] = true;
-      Serial.println("ENC2 LONG_PRESS");
+      if (DebugFlags::kEnableInputEventLogs) {
+        Serial.println("ENC2 LONG_PRESS");
+      }
       if (callback) {
         const Event event = {EventType::RightLongPress, 0};
         callback(event, context);

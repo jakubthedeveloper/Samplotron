@@ -8,6 +8,9 @@ Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, m
 ## Current Features
 
 - WAV sample playback from `/samples` on SD.
+- 8-voice polyphony with deterministic oldest-voice stealing.
+- Playback format for assigned samples is enforced to WAV PCM16, 44.1kHz, mono.
+- Audio playback runs in a dedicated FreeRTOS task/core with trigger events passed by queue.
 - OLED UI with 2 encoders (via MCP23017).
 - On-device MIDI note to sample assignment.
 - Persistent assignments and sample volumes in `sampler_config.json`.
@@ -50,6 +53,7 @@ python -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash -z 
 ## Controls (Short Version)
 
 - Main screen: `LIB`, `VOL`, `SAVE`.
+- `VOL`: range `0..100`, step `5` per encoder tick.
 - Library: browse samples and preview playback.
 - Hold right encoder button in Library: MIDI note assignment mode.
 - `SAVE`: writes assignments and volumes to SD.

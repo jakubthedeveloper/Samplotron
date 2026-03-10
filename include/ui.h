@@ -73,6 +73,9 @@ class Ui {
 
  private:
   static constexpr int kMenuItems = 3;
+  static constexpr int kVolumeMin = 0;
+  static constexpr int kVolumeMax = 100;
+  static constexpr int kVolumeStep = 5;
   static constexpr unsigned long kSaveFeedbackMs = 1000;
   static constexpr unsigned long kMidiPulseMs = 100;
   static constexpr unsigned long kSavingScreenMinMs = 1000;
