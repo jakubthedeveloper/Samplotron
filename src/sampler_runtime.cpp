@@ -80,6 +80,18 @@ int SamplerRuntime::assignedSamplesCount() const {
   return settings_.assignmentCount;
 }
 
+int SamplerRuntime::ramSampleCount() const {
+  return classificationReport_.ramSampleCount;
+}
+
+int SamplerRuntime::streamSampleCount() const {
+  return classificationReport_.streamSampleCount;
+}
+
+uint32_t SamplerRuntime::sampleRamUsedBytes() const {
+  return ramLoadReport_.usedBytes;
+}
+
 int SamplerRuntime::ramUsagePercent() const {
   const uint32_t budgetBytes = settings_.sampleRamBudgetBytes;
   if (budgetBytes == 0) return 0;

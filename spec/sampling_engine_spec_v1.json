@@ -456,28 +456,57 @@
     ],
     "preferred_requirements": [
       "Use explicit ownership boundaries for state.",
-      "Provide clear debug counters for memory and streaming behavior.",
+      "Provide clear runtime serial diagnostics for memory and streaming behavior.",
       "Make sample RAM budget configurable through saved settings."
     ]
   },
-  "diagnostics": {
-    "counters": [
-      "active_voice_peak",
-      "voice_steal_count",
-      "sample_ram_used_bytes",
-      "sample_ram_budget_bytes",
-      "assigned_sample_count",
-      "ram_sample_count",
-      "stream_sample_count",
-      "stream_underrun_count",
-      "audio_buffer_underrun_count",
-      "boot_load_time_ms"
-    ],
-    "debug_views": [
-      "current assignment map",
-      "which assigned samples are RAM vs STREAM",
-      "missing file warnings",
-      "ready state after boot"
+  "runtime_logging": {
+    "serial_logs": [
+      {
+        "name": "AUDIO_DIAG",
+        "enabled_by": "DebugFlags::kEnableRuntimeAudioDiagLogs",
+        "fields": [
+          "active",
+          "peak",
+          "steals",
+          "loop_gap_max_us",
+          "late_loops",
+          "play_max_us",
+          "slow_plays",
+          "play_count",
+          "rate_set_calls",
+          "rate_set_skipped",
+          "rate_set_applied",
+          "sd_reads",
+          "sd_slow_reads",
+          "sd_read_max_us",
+          "sd_read_max_bytes",
+          "stream_refills",
+          "sd_bytes"
+        ]
+      },
+      {
+        "name": "sample_loader rebuild done",
+        "enabled_by": "always printed on loader rebuild",
+        "fields": [
+          "assigned",
+          "ram",
+          "stream",
+          "ram_used"
+        ]
+      },
+      {
+        "name": "RAM_DIAG",
+        "enabled_by": "DebugFlags::kEnableRuntimeRamUsageLogs",
+        "period_ms": 5000,
+        "fields": [
+          "heap_free",
+          "heap_min",
+          "heap_size",
+          "psram_free",
+          "psram_size"
+        ]
+      }
     ]
   },
   "acceptance_criteria": [

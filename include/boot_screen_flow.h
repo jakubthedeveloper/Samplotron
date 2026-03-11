@@ -7,9 +7,11 @@
 
 class BootScreenFlow {
  public:
+  static constexpr unsigned long kDefaultDismissTimeoutMs = 5000;
+
   void begin(DisplaySsd1309 *display, Input *input);
   void render(bool loading, int totalSamples, int assignedSamples, int ramUsagePercent);
-  void waitForDismissOrTimeout(unsigned long timeoutMs);
+  void waitForDismissOrTimeout(unsigned long timeoutMs = kDefaultDismissTimeoutMs);
 
  private:
   static void onInputEvent(const Input::Event &event, void *context);

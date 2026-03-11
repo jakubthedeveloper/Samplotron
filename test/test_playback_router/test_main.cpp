@@ -236,7 +236,12 @@ void setUp() {
 
 void tearDown() {}
 
-bool TriggerEngine::begin(Audio *, UBaseType_t, BaseType_t, uint16_t, uint16_t) {
+bool TriggerEngine::begin(Audio *,
+                          UBaseType_t,
+                          BaseType_t,
+                          uint16_t,
+                          uint16_t,
+                          QueueHandle_t) {
   return true;
 }
 

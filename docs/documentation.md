@@ -156,33 +156,70 @@ Assignment rules:
 
 ## 8. Hardcoded Values (Where to Change)
 
-- UI sample limit: `Ui::kMaxSamples = 32` (`include/ui.h`)
-- Audio voice count: `Audio::kVoiceCount = 8` (`include/audio.h`)
-- Default RAM budget: `kDefaultSampleRamBudgetBytes = 1 MB` (`include/settings_store.h`)
-- RAM preload threshold: `kFixedPreloadThresholdSeconds = 5.0f` (`include/sample_classifier.h`)
-- Config path: `"/sampler_config.json"` (`src/settings_store.cpp`)
-- JSON document capacity: `12288` (`src/settings_store.cpp`)
-- Button debounce: `35 ms` (`include/input.h`)
-- Encoder detent: `4` ticks (`include/input.h`)
-- Volume change step in UI: `5` per right-encoder tick on `VOL` (`src/ui.cpp`)
-- Long press (right encoder): `700 ms` (`include/input.h`)
-- Boot screen duration: `5000 ms` (`src/sampler_app.cpp`)
-- Audio task core/priority: core `1`, priority `6` (`src/sampler_app.cpp`)
-- UI task core/priority: core `0`, priority `2` (`src/sampler_app.cpp`)
-- Trigger queue length: `32` (`src/sampler_app.cpp`)
-- Voice fade-in to reduce trigger click: `kVoiceFadeInUs` (`src/audio.cpp`).
-  - Default is `0` (feature inactive) to avoid transient chopping on percussive sounds.
-  - Can be enabled by setting a non-zero fade time in microseconds.
-- Audio mixer buffer size: `kMixerBufferSamples = 512` (`src/audio.cpp`)
-- Minimum saving screen: `1000 ms` (`include/ui.h`)
-- "Saved" feedback duration: `1000 ms` (`include/ui.h`)
-- MIDI pulse indicator duration: `100 ms` (`include/ui.h`)
-- Global debug logs switch: `DebugFlags::kEnableDebugLogs` (`include/debug_flags.h`)
-- Per-trigger playback logs switch: `DebugFlags::kEnablePerTriggerPlaybackLogs` (`include/debug_flags.h`)
-- Input event logs switch: `DebugFlags::kEnableInputEventLogs` (`include/debug_flags.h`)
-- Runtime audio diagnostics log switch: `DebugFlags::kEnableRuntimeAudioDiagLogs` (`include/debug_flags.h`)
-- `AUDIO_DIAG` includes trigger handling timing: `play_max_us`, `slow_plays`, `play_count` (`src/audio.cpp`)
-- `AUDIO_DIAG` includes I2S rate-set counters: `rate_set_calls`, `rate_set_skipped`, `rate_set_applied` (`src/audio.cpp`)
+### `include/audio.h`
+
+- Audio voice count: `Audio::kVoiceCount = 8`
+
+### `include/boot_screen_flow.h`
+
+- Boot screen dismiss timeout: `BootScreenFlow::kDefaultDismissTimeoutMs = 5000`
+
+### `include/debug_flags.h`
+
+- Global debug logs switch: `DebugFlags::kEnableDebugLogs`
+- Per-trigger playback logs switch: `DebugFlags::kEnablePerTriggerPlaybackLogs`
+- Input event logs switch: `DebugFlags::kEnableInputEventLogs`
+- Runtime audio diagnostics log switch: `DebugFlags::kEnableRuntimeAudioDiagLogs`
+- Runtime RAM diagnostics log switch: `DebugFlags::kEnableRuntimeRamUsageLogs`
+- Runtime RAM diagnostics interval: `DebugFlags::kRuntimeRamUsageLogIntervalMs = 5000`
+- To enable/disable a log group, edit `include/debug_flags.h` and set the given flag to `true`/`false`, then rebuild and flash firmware (`make upload-main`).
+
+### `include/input.h`
+
+- Button debounce: `35 ms`
+- Encoder detent: `4` ticks
+- Long press (right encoder): `700 ms`
+
+### `include/sample_classifier.h`
+
+- RAM preload threshold: `kFixedPreloadThresholdSeconds = 5.0f`
+
+### `include/settings_store.h`
+
+- Default RAM budget: `kDefaultSampleRamBudgetBytes = 1 MB`
+
+### `include/ui.h`
+
+- UI sample limit: `Ui::kMaxSamples = 32`
+- Minimum saving screen: `1000 ms`
+- "Saved" feedback duration: `1000 ms`
+- MIDI pulse indicator duration: `100 ms`
+
+### `src/audio.cpp`
+
+- Voice fade-in to reduce trigger click: `kVoiceFadeInUs` (default `0`, feature inactive to avoid transient chopping on percussive sounds; set non-zero microseconds to enable)
+- Audio mixer buffer size: `kMixerBufferSamples = 512`
+- `AUDIO_DIAG` includes trigger handling timing: `play_max_us`, `slow_plays`, `play_count`
+- `AUDIO_DIAG` includes I2S rate-set counters: `rate_set_calls`, `rate_set_skipped`, `rate_set_applied`
+
+### `src/sampler_app.cpp`
+
+- Audio task core/priority: core `1`, priority `6`
+- Sample loader task core/priority: core `0`, priority `4`
+- UI task core/priority: core `0`, priority `2`
+- Trigger queue length: `32`
+- Loader command queue length: `12`
+- UI status queue length: `16`
+- `RAM_DIAG` includes heap/psram occupancy: `heap_free`, `heap_min`, `heap_size`, `psram_free`, `psram_size`
+
+### `src/settings_store.cpp`
+
+- Config path: `"/sampler_config.json"`
+- JSON document capacity: `12288`
+
+### `src/ui.cpp`
+
+- Volume change step in UI: `5` per right-encoder tick on `VOL`
 
 ## 9. Useful Commands
 
@@ -212,6 +249,7 @@ Assignment rules:
 
 - `src/main.cpp`: thin Arduino entrypoint delegating to `SamplerApp`
 - `src/sampler_app.cpp`: high-level orchestration (boot sequence, module wiring, task startup)
+- `src/sampler_loader_ipc.h`: cross-task command/status types for `sample_loader` and UI/audio domains
 - `src/boot_screen_flow.cpp`: boot screen render model and dismiss/timeout flow
 - `src/sampler_callback_binder.cpp`: callback wiring for UI/MIDI/input routing
 - `src/input_ui_bridge.cpp`: `Input::Event` -> `Ui::Event` mapping

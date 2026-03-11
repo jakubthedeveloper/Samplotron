@@ -6,6 +6,7 @@
 #include <freertos/task.h>
 
 #include "audio.h"
+#include "sampler_loader_ipc.h"
 
 enum class TriggerSourceType : uint8_t {
   StreamPath,
@@ -30,7 +31,8 @@ class TriggerEngine {
              UBaseType_t taskPriority,
              BaseType_t taskCore,
              uint16_t queueLength = 32,
-             uint16_t stackWords = 6144);
+             uint16_t stackWords = 6144,
+             QueueHandle_t uiStatusQueue = nullptr);
   bool enqueue(const TriggerEvent &event);
   bool waitForIdle(uint32_t timeoutMs) const;
 
@@ -43,4 +45,5 @@ class TriggerEngine {
   QueueHandle_t triggerQueue_ = nullptr;
   TaskHandle_t taskHandle_ = nullptr;
   volatile uint8_t audioActiveVoices_ = 0;
+  QueueHandle_t uiStatusQueue_ = nullptr;
 };

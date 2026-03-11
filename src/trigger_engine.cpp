@@ -10,8 +10,10 @@ bool TriggerEngine::begin(Audio *audio,
                           UBaseType_t taskPriority,
                           BaseType_t taskCore,
                           uint16_t queueLength,
-                          uint16_t stackWords) {
+                          uint16_t stackWords,
+                          QueueHandle_t uiStatusQueue) {
   audio_ = audio;
+  uiStatusQueue_ = uiStatusQueue;
   triggerQueue_ = xQueueCreate(queueLength, sizeof(TriggerEvent));
   if (!triggerQueue_) {
     Serial.println("Failed to create trigger queue");
@@ -66,6 +68,13 @@ void TriggerEngine::runAudioTask() {
   Serial.printf("audio_task started core=%d prio=%u\n",
                 static_cast<int>(xPortGetCoreID()),
                 static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+  if (uiStatusQueue_) {
+    UiStatusEvent event;
+    event.source = UiStatusSource::AudioEngine;
+    event.type = UiStatusType::AudioTaskStarted;
+    event.success = true;
+    xQueueSend(uiStatusQueue_, &event, 0);
+  }
 
   TriggerEvent event;
   while (true) {

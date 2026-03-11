@@ -21,6 +21,9 @@ class SamplerRuntime {
 
   const SettingsStore::SamplerSettings &settings() const;
   int assignedSamplesCount() const;
+  int ramSampleCount() const;
+  int streamSampleCount() const;
+  uint32_t sampleRamUsedBytes() const;
   int ramUsagePercent() const;
 
   const ActiveSampleRegistry::Entry *findRegistryEntryForNote(int note) const;
