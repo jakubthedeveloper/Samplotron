@@ -5,13 +5,13 @@
 #include <string.h>
 
 #include "AudioFileSource.h"
-#include "AudioFileSourceSD.h"
 #include "AudioGeneratorWAV.h"
 #include "AudioOutputI2S.h"
 #include "AudioOutputMixer.h"
 
 #include "debug_flags.h"
 #include "pins.h"
+#include "stream_manager.h"
 
 namespace {
 
@@ -145,40 +145,6 @@ class AudioFileSourceRamWav : public AudioFileSource {
   bool open_ = false;
 };
 
-struct SdIoDiagnostics {
-  uint32_t readCount = 0;
-  uint32_t slowReadCount = 0;
-  uint32_t maxReadUs = 0;
-  uint32_t maxReadBytes = 0;
-};
-
-class TrackedAudioFileSourceSD : public AudioFileSourceSD {
- public:
-  explicit TrackedAudioFileSourceSD(SdIoDiagnostics *diag) : diag_(diag) {}
-
-  uint32_t read(void *data, uint32_t len) override {
-    const uint32_t startUs = micros();
-    const uint32_t out = AudioFileSourceSD::read(data, len);
-    const uint32_t elapsedUs = micros() - startUs;
-
-    if (diag_) {
-      diag_->readCount++;
-      if (elapsedUs > diag_->maxReadUs) {
-        diag_->maxReadUs = elapsedUs;
-        diag_->maxReadBytes = out;
-      }
-      if (elapsedUs >= kSlowReadThresholdUs) {
-        diag_->slowReadCount++;
-      }
-    }
-    return out;
-  }
-
- private:
-  static constexpr uint32_t kSlowReadThresholdUs = 3000;
-  SdIoDiagnostics *diag_ = nullptr;
-};
-
 class StableAudioOutputI2S : public AudioOutputI2S {
  public:
   StableAudioOutputI2S(int port, int outputMode, int dmaCount, int useApll)
@@ -232,7 +198,6 @@ struct Audio::Impl {
     uint32_t startOrder = 0;
     uint32_t startUs = 0;
     AudioGeneratorWAV *wav = nullptr;
-    TrackedAudioFileSourceSD *sdSource = nullptr;
     AudioFileSourceRamWav *ramSource = nullptr;
     AudioFileSource *activeSource = nullptr;
     AudioOutputMixerStub *stub = nullptr;
@@ -243,9 +208,9 @@ struct Audio::Impl {
   StableAudioOutputI2S *out = nullptr;
   AudioOutputMixer *mixer = nullptr;
   Voice voices[kVoiceCount];
+  StreamManager streamManager;
   uint32_t nextStartOrder = 1;
   RuntimeStats stats;
-  SdIoDiagnostics sdIoDiag;
   uint32_t lastUpdateUs = 0;
   uint32_t maxUpdateGapUs = 0;
   uint32_t lateUpdateCount = 0;
@@ -334,10 +299,12 @@ void maybeLogRuntimeDiagnostics(Audio::Impl *impl) {
   if ((nowMs - impl->lastDiagLogMs) < 2000) return;
   impl->lastDiagLogMs = nowMs;
 
+  const StreamManager::Diagnostics &streamDiag = impl->streamManager.diagnostics();
   Serial.printf("AUDIO_DIAG active=%u peak=%u steals=%lu loop_gap_max_us=%lu late_loops=%lu "
                 "play_max_us=%lu slow_plays=%lu play_count=%lu "
                 "rate_set_calls=%lu rate_set_skipped=%lu rate_set_applied=%lu "
-                "sd_reads=%lu sd_slow_reads=%lu sd_read_max_us=%lu sd_read_max_bytes=%lu\n",
+                "sd_reads=%lu sd_slow_reads=%lu sd_read_max_us=%lu sd_read_max_bytes=%lu "
+                "stream_refills=%lu sd_bytes=%lu\n",
                 static_cast<unsigned>(impl->stats.activeVoices),
                 static_cast<unsigned>(impl->stats.activeVoicePeak),
                 static_cast<unsigned long>(impl->stats.voiceStealCount),
@@ -349,10 +316,12 @@ void maybeLogRuntimeDiagnostics(Audio::Impl *impl) {
                 static_cast<unsigned long>(impl->out ? impl->out->rateSetCalls() : 0),
                 static_cast<unsigned long>(impl->out ? impl->out->skippedRateSetCalls() : 0),
                 static_cast<unsigned long>(impl->out ? impl->out->appliedRateSetCalls() : 0),
-                static_cast<unsigned long>(impl->sdIoDiag.readCount),
-                static_cast<unsigned long>(impl->sdIoDiag.slowReadCount),
-                static_cast<unsigned long>(impl->sdIoDiag.maxReadUs),
-                static_cast<unsigned long>(impl->sdIoDiag.maxReadBytes));
+                static_cast<unsigned long>(streamDiag.sourceReadCount),
+                static_cast<unsigned long>(streamDiag.sourceSlowReadCount),
+                static_cast<unsigned long>(streamDiag.sourceMaxReadUs),
+                static_cast<unsigned long>(streamDiag.sourceMaxReadBytes),
+                static_cast<unsigned long>(streamDiag.bufferRefillCount),
+                static_cast<unsigned long>(streamDiag.sourceBytesRead));
 }
 
 void recordPlayCost(Audio::Impl *impl, uint32_t elapsedUs) {
@@ -398,12 +367,15 @@ bool beginVoiceFromPath(Audio::Impl *impl, int voiceIndex, const String &sampleP
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   Audio::Impl::Voice &voice = impl->voices[voiceIndex];
-  if (!voice.wav || !voice.sdSource || !voice.stub) return false;
-  if (!voice.sdSource->open(samplePath.c_str())) {
+  if (!voice.wav || !voice.stub) return false;
+  if (!impl->streamManager.openStream(static_cast<uint8_t>(voiceIndex), samplePath.c_str())) {
     return false;
   }
 
-  voice.activeSource = voice.sdSource;
+  voice.activeSource = impl->streamManager.sourceForStream(static_cast<uint8_t>(voiceIndex));
+  if (!voice.activeSource) {
+    return false;
+  }
   voice.targetGain = voiceGainFromVolume(volume);
   voice.currentGain = voice.targetGain;
   voice.stub->SetGain(voice.currentGain);
@@ -470,13 +442,13 @@ Audio::~Audio() {
     stopVoice(impl_->voices[i]);
   }
 
+  impl_->streamManager.shutdown();
+
   for (int i = 0; i < kVoiceCount; i++) {
     delete impl_->voices[i].wav;
     impl_->voices[i].wav = nullptr;
     delete impl_->voices[i].stub;
     impl_->voices[i].stub = nullptr;
-    delete impl_->voices[i].sdSource;
-    impl_->voices[i].sdSource = nullptr;
     delete impl_->voices[i].ramSource;
     impl_->voices[i].ramSource = nullptr;
     impl_->voices[i].activeSource = nullptr;
@@ -521,15 +493,25 @@ void Audio::begin() {
     return;
   }
 
+  if (!impl_->streamManager.begin(kVoiceCount)) {
+    Serial.println("Audio begin failed: stream manager init failed");
+    delete impl_->mixer;
+    impl_->mixer = nullptr;
+    delete impl_->out;
+    impl_->out = nullptr;
+    delete impl_;
+    impl_ = nullptr;
+    return;
+  }
+
   int readyVoices = 0;
   for (int i = 0; i < kVoiceCount; i++) {
     Impl::Voice &voice = impl_->voices[i];
     voice.wav = new AudioGeneratorWAV();
-    voice.sdSource = new TrackedAudioFileSourceSD(&impl_->sdIoDiag);
     voice.ramSource = new AudioFileSourceRamWav();
     voice.stub = impl_->mixer->NewInput();
 
-    const bool ready = voice.wav && voice.sdSource && voice.ramSource && voice.stub;
+    const bool ready = voice.wav && voice.ramSource && voice.stub;
     if (ready) {
       voice.stub->SetGain(1.0f);
       readyVoices++;

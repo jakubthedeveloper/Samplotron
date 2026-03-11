@@ -241,7 +241,8 @@
       }
     ],
     "sample_loading_policy": {
-      "preload_threshold_seconds": 2.0,
+      "preload_threshold_seconds": 5.0,
+      "preload_threshold_source": "fixed_firmware_constant",
       "policy_description": [
         "Only MIDI-assigned samples are evaluated for preload/stream decisions.",
         "If assigned sample duration is <= preload_threshold_seconds and sample RAM budget permits, load full sample to RAM.",
@@ -288,7 +289,6 @@
       "version": "string",
       "global_settings": {
         "sample_ram_budget_bytes": "integer",
-        "preload_threshold_seconds": "number",
         "master_volume_optional": "number"
       },
       "midi_assignments": [
@@ -457,7 +457,7 @@
     "preferred_requirements": [
       "Use explicit ownership boundaries for state.",
       "Provide clear debug counters for memory and streaming behavior.",
-      "Make preload threshold and sample RAM budget configurable through saved settings."
+      "Make sample RAM budget configurable through saved settings."
     ]
   },
   "diagnostics": {
@@ -497,12 +497,6 @@
     "Do not solve future preset architecture in this task."
   ],
   "accepted_implementation_deviations": [
-    {
-      "id": "fixed_preload_threshold",
-      "status": "accepted",
-      "description": "preload_threshold_seconds is not configurable from JSON in current implementation.",
-      "implementation_note": "Threshold is a fixed firmware constant."
-    },
     {
       "id": "assignment_volume_in_schema",
       "status": "accepted",

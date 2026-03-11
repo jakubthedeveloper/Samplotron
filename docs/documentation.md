@@ -170,7 +170,9 @@ Assignment rules:
 - Audio task core/priority: core `1`, priority `6` (`src/sampler_app.cpp`)
 - UI task core/priority: core `0`, priority `2` (`src/sampler_app.cpp`)
 - Trigger queue length: `32` (`src/sampler_app.cpp`)
-- Voice fade-in to reduce trigger click: `kVoiceFadeInUs = 0` (`src/audio.cpp`, disabled by default to preserve transients)
+- Voice fade-in to reduce trigger click: `kVoiceFadeInUs` (`src/audio.cpp`).
+  - Default is `0` (feature inactive) to avoid transient chopping on percussive sounds.
+  - Can be enabled by setting a non-zero fade time in microseconds.
 - Audio mixer buffer size: `kMixerBufferSamples = 512` (`src/audio.cpp`)
 - Minimum saving screen: `1000 ms` (`include/ui.h`)
 - "Saved" feedback duration: `1000 ms` (`include/ui.h`)

@@ -12,19 +12,18 @@ void SamplerCallbackBinder::begin(Ui *ui,
   saveService_ = saveService;
 }
 
-void SamplerCallbackBinder::bindUiAndMidiCallbacks() const {
+void SamplerCallbackBinder::bindUiAndMidiCallbacks() {
   if (!ui_ || !midi_) {
     return;
   }
 
-  ui_->setPreviewCallback(onPreviewSample, const_cast<SamplerCallbackBinder *>(this));
-  ui_->setSaveCallback(onSaveConfiguration, const_cast<SamplerCallbackBinder *>(this));
-  midi_->setAssignedNoteOnCallback(onAssignedMidiNoteOn,
-                                   const_cast<SamplerCallbackBinder *>(this));
+  ui_->setPreviewCallback(onPreviewSample, this);
+  ui_->setSaveCallback(onSaveConfiguration, this);
+  midi_->setAssignedNoteOnCallback(onAssignedMidiNoteOn, this);
 }
 
-void SamplerCallbackBinder::pollInput(Input &input) const {
-  input.update(onInputEvent, const_cast<SamplerCallbackBinder *>(this));
+void SamplerCallbackBinder::pollInput(Input &input) {
+  input.update(onInputEvent, this);
 }
 
 void SamplerCallbackBinder::onInputEvent(const Input::Event &event, void *context) {

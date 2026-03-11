@@ -12,8 +12,8 @@ class SamplerCallbackBinder {
              Midi *midi,
              SamplerPlaybackRouter *playbackRouter,
              SamplerSaveService *saveService);
-  void bindUiAndMidiCallbacks() const;
-  void pollInput(Input &input) const;
+  void bindUiAndMidiCallbacks();
+  void pollInput(Input &input);
 
  private:
   static void onInputEvent(const Input::Event &event, void *context);

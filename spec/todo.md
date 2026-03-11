@@ -12,7 +12,6 @@ Source: `spec/sampling_engine_spec_v1.json`
 
 ## 2. Spec-compliant streaming (main gap)
 
-- [ ] Implement `StreamManager` with read-ahead buffers for `STREAM` voices.
 - [ ] Remove blocking SD reads from the critical audio path (`No blocking SD read in the critical audio mixing loop`).
 - [ ] Define safe stream-data handoff between loader and audio (immutable/prepared descriptors + queues/ownership signaling).
 - [ ] Rework preview playback so it uses the loader path (not direct audio-domain SD open/start).
@@ -24,23 +23,10 @@ Source: `spec/sampling_engine_spec_v1.json`
 - [ ] Add `boot_load_time_ms`.
 - [ ] Expose consistent diagnostic status to UI (through `ui_status_queue` once implemented).
 
-## 4. Policy parameterization and alignment
+## 4. Follow-up cleanup after recent fixes
 
-- [ ] Decide whether to restore the preload threshold from the spec (`preload_threshold_seconds = 2.0`) or keep the current deviation as an explicit product decision.
-- [ ] (Optional) Make `preload_threshold_seconds` configurable in JSON (currently an accepted deviation in the spec).
-
-## 5. Code cleanup and modularity (technical task)
-
-- [x] Slim down `src/main.cpp` by splitting it into modules, e.g.:
-  - `app_bootstrap` (initialization and boot sequence),
-  - `app_tasks` (task entrypoints and queues),
-  - `app_orchestrator` (UI/MIDI/loader/audio integration),
-  - `app_logging` (diagnostics/telemetry).
-- [x] Reduce global state in `main.cpp` (move into dedicated module contexts/structures).
-- [x] Normalize callbacks and event handlers into smaller, testable units.
-
-## 6. Follow-up cleanup after recent fixes
-
-- [ ] Decide whether to keep fade-in as an optional mechanism (`kVoiceFadeInUs`) or remove dead logic when set to `0`.
 - [ ] Once audio behavior is stable, keep runtime diagnostics disabled by default and provide a short debug-profile instruction in docs.
-- [ ] Remove `const_cast` usage from `sampler_callback_binder` by simplifying binder method constness/API.
+
+## 5. UI / assignment
+
+- [ ] Panic button MIDI note assignment.
