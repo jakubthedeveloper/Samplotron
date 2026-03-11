@@ -166,10 +166,10 @@ Assignment rules:
 - Encoder detent: `4` ticks (`include/input.h`)
 - Volume change step in UI: `5` per right-encoder tick on `VOL` (`src/ui.cpp`)
 - Long press (right encoder): `700 ms` (`include/input.h`)
-- Boot screen duration: `5000 ms` (`src/main.cpp`)
-- Audio task core/priority: core `1`, priority `6` (`src/main.cpp`)
-- UI task core/priority: core `0`, priority `2` (`src/main.cpp`)
-- Trigger queue length: `32` (`src/main.cpp`)
+- Boot screen duration: `5000 ms` (`src/sampler_app.cpp`)
+- Audio task core/priority: core `1`, priority `6` (`src/sampler_app.cpp`)
+- UI task core/priority: core `0`, priority `2` (`src/sampler_app.cpp`)
+- Trigger queue length: `32` (`src/sampler_app.cpp`)
 - Voice fade-in to reduce trigger click: `kVoiceFadeInUs = 0` (`src/audio.cpp`, disabled by default to preserve transients)
 - Audio mixer buffer size: `kMixerBufferSamples = 512` (`src/audio.cpp`)
 - Minimum saving screen: `1000 ms` (`include/ui.h`)
@@ -208,7 +208,16 @@ Assignment rules:
 
 ## 10. Module Map (Code Orientation)
 
-- `src/main.cpp`: startup orchestration, SD, settings load/save, trigger queue, task startup
+- `src/main.cpp`: thin Arduino entrypoint delegating to `SamplerApp`
+- `src/sampler_app.cpp`: high-level orchestration (boot sequence, module wiring, task startup)
+- `src/boot_screen_flow.cpp`: boot screen render model and dismiss/timeout flow
+- `src/sampler_callback_binder.cpp`: callback wiring for UI/MIDI/input routing
+- `src/input_ui_bridge.cpp`: `Input::Event` -> `Ui::Event` mapping
+- `src/sampler_playback_router.cpp`: preview and MIDI-triggered playback routing
+- `src/sampler_save_service.cpp`: save flow orchestration (wait idle -> collect -> rebuild -> persist)
+- `src/trigger_engine.cpp`: trigger queue and dedicated audio task loop
+- `src/sample_library.cpp`: SD sample discovery, sorting, and path lookup
+- `src/sampler_runtime.cpp`: settings <-> UI mapping, classification, RAM preload, active registry
 - `src/ui.cpp`: UI state, navigation, assignment logic, save flow
 - `src/display_ssd1309.cpp`: OLED screen rendering
 - `src/input.cpp`: MCP23017 reading, encoder decode, click/long-press handling

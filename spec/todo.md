@@ -1,6 +1,6 @@
 # TODO (sampling_engine_spec_v1)
 
-Status as of: 2026-03-10  
+Status as of: 2026-03-11  
 Source: `spec/sampling_engine_spec_v1.json`
 
 ## 1. Task and queue architecture (still open)
@@ -31,15 +31,16 @@ Source: `spec/sampling_engine_spec_v1.json`
 
 ## 5. Code cleanup and modularity (technical task)
 
-- [ ] Slim down `src/main.cpp` by splitting it into modules, e.g.:
+- [x] Slim down `src/main.cpp` by splitting it into modules, e.g.:
   - `app_bootstrap` (initialization and boot sequence),
   - `app_tasks` (task entrypoints and queues),
   - `app_orchestrator` (UI/MIDI/loader/audio integration),
   - `app_logging` (diagnostics/telemetry).
-- [ ] Reduce global state in `main.cpp` (move into dedicated module contexts/structures).
-- [ ] Normalize callbacks and event handlers into smaller, testable units.
+- [x] Reduce global state in `main.cpp` (move into dedicated module contexts/structures).
+- [x] Normalize callbacks and event handlers into smaller, testable units.
 
 ## 6. Follow-up cleanup after recent fixes
 
 - [ ] Decide whether to keep fade-in as an optional mechanism (`kVoiceFadeInUs`) or remove dead logic when set to `0`.
 - [ ] Once audio behavior is stable, keep runtime diagnostics disabled by default and provide a short debug-profile instruction in docs.
+- [ ] Remove `const_cast` usage from `sampler_callback_binder` by simplifying binder method constness/API.

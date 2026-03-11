@@ -5,6 +5,8 @@
 
 Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, maps samples to MIDI notes, and stores device configuration on the card.
 
+Architecture note: `src/main.cpp` is a thin entrypoint, while runtime orchestration is implemented in `src/sampler_app.cpp` and dedicated modules.
+
 ## Current Features
 
 - WAV sample playback from `/samples` on SD.
