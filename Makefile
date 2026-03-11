@@ -1,6 +1,7 @@
 PIO ?= pio
 SAMPLES_DIR ?= samples
 
+ifneq ($(filter convert-samples,$(MAKECMDGOALS)),)
 CONVERT_SAMPLES_ARGS := $(filter-out convert-samples,$(MAKECMDGOALS))
 ifneq ($(CONVERT_SAMPLES_ARGS),)
 SAMPLES_DIR := $(firstword $(CONVERT_SAMPLES_ARGS))
@@ -8,12 +9,14 @@ SAMPLES_DIR := $(firstword $(CONVERT_SAMPLES_ARGS))
 $(CONVERT_SAMPLES_ARGS):
 	@:
 endif
+endif
 
 MAIN_ENV := esp-wrover-kit
 DEBUG_ENV := esp-wrover-kit-debug-input
 DEBUG_MIDI_ENV := esp-wrover-kit-debug-midi
+TEST_ENV := native
 
-.PHONY: help upload-main upload-debug upload-debug-midi build-main build-debug build-debug-midi monitor convert-samples
+.PHONY: help upload-main upload-debug upload-debug-midi build-main build-debug build-debug-midi test monitor convert-samples
 
 help:
 	@echo "Available targets:"
@@ -23,6 +26,7 @@ help:
 	@echo "  make build-main     - build main firmware"
 	@echo "  make build-debug    - build debug firmware"
 	@echo "  make build-debug-midi  - build MIDI debug firmware"
+	@echo "  make test           - run unit tests (native)"
 	@echo "  make monitor        - open serial monitor (115200)"
 	@echo "  make convert-samples SAMPLES_DIR=/path/to/samples - convert *.wav to PCM16 44.1kHz mono"
 	@echo "  make convert-samples /path/to/samples            - same as above (path positional)"
@@ -44,6 +48,9 @@ build-debug:
 
 build-debug-midi:
 	$(PIO) run -e $(DEBUG_MIDI_ENV)
+
+test:
+	$(PIO) test -e $(TEST_ENV)
 
 monitor:
 	$(PIO) device monitor -b 115200

@@ -21,6 +21,9 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
+      - name: Run unit tests
+        run: pio test -e native
+
       - name: Build main firmware
         run: pio run -e esp-wrover-kit
 
