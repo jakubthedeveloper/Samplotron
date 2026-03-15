@@ -44,6 +44,7 @@ namespace SettingsStore {
 void applyDefaults(SamplerSettings &settings) {
   settings.version = kCurrentVersion;
   settings.sampleRamBudgetBytes = SamplerSettings::kDefaultSampleRamBudgetBytes;
+  settings.panicNote = -1;
   settings.assignmentCount = 0;
 }
 
@@ -79,6 +80,8 @@ bool loadFromSd(SamplerSettings &settings) {
     if (globalSettings["sample_ram_budget_bytes"].is<uint32_t>()) {
       settings.sampleRamBudgetBytes = globalSettings["sample_ram_budget_bytes"].as<uint32_t>();
     }
+    const long panicNote = globalSettings["panic_note"] | -1;
+    settings.panicNote = isValidNote(panicNote) ? static_cast<int16_t>(panicNote) : -1;
   }
 
   JsonArray assignments = gSettingsJsonDoc["midi_assignments"].as<JsonArray>();
@@ -119,6 +122,9 @@ bool saveToSd(const SamplerSettings &settings) {
 
   JsonObject globalSettings = gSettingsJsonDoc.createNestedObject("global_settings");
   globalSettings["sample_ram_budget_bytes"] = settings.sampleRamBudgetBytes;
+  if (settings.panicNote >= 0 && settings.panicNote <= 127) {
+    globalSettings["panic_note"] = settings.panicNote;
+  }
 
   JsonArray assignments = gSettingsJsonDoc.createNestedArray("midi_assignments");
   for (int i = 0; i < settings.assignmentCount; i++) {

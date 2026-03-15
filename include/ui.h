@@ -43,6 +43,9 @@ class Ui {
 
     int libraryWindowStart = 0;
     int assignedNoteForSelectedSample = -1;
+    int panicNote = -1;
+    bool libraryAssignsPanic = false;
+    bool assigningPanic = false;
     bool showSavedFeedback = false;
     bool lastSaveSucceeded = true;
     bool hasUnsavedChanges = false;
@@ -65,6 +68,8 @@ class Ui {
   bool hasSamples() const;
   bool setMidiAssignment(int note, int sampleIndex);
   int assignedSampleForMidiNote(int note) const;
+  bool setPanicMidiNote(int note);
+  int panicMidiNote() const;
   bool setSampleVolume(int sampleIndex, int volume);
   int sampleVolumeForSample(int sampleIndex) const;
   void reportTriggeredSample(int sampleIndex);
@@ -104,6 +109,9 @@ class Ui {
   int libraryWindowStart_ = 0;
   int sampleVolumes_[kMaxSamples] = {0};
   int sampleForMidiNote_[128] = {0};  // -1 means unassigned.
+  int panicMidiNote_ = -1;
+  bool libraryAssignsPanic_ = false;
+  bool assigningPanic_ = false;
 
   bool saveCompletedPending_ = false;
   bool saveRunPending_ = false;

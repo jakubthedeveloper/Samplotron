@@ -11,6 +11,7 @@
 enum class TriggerSourceType : uint8_t {
   StreamPath,
   RamData,
+  PanicAll,
 };
 
 struct TriggerEvent {
@@ -35,6 +36,7 @@ class TriggerEngine {
              uint16_t stackWords = 6144,
              QueueHandle_t uiStatusQueue = nullptr);
   bool enqueue(const TriggerEvent &event);
+  bool panicAll();
   bool waitForIdle(uint32_t timeoutMs) const;
 
  private:

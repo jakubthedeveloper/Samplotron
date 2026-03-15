@@ -4,12 +4,13 @@
 
 #include "display_ssd1309.h"
 #include "input.h"
+#include "ui.h"
 
 class BootScreenFlow {
  public:
   static constexpr unsigned long kDefaultDismissTimeoutMs = 5000;
 
-  void begin(DisplaySsd1309 *display, Input *input);
+  void begin(DisplaySsd1309 *display, Input *input, Ui *ui);
   void render(bool loading, int totalSamples, int assignedSamples, int ramUsagePercent);
   void waitForDismissOrTimeout(unsigned long timeoutMs = kDefaultDismissTimeoutMs);
 
@@ -18,6 +19,7 @@ class BootScreenFlow {
 
   DisplaySsd1309 *display_ = nullptr;
   Input *input_ = nullptr;
+  Ui *ui_ = nullptr;
   DisplaySsd1309::BootScreenModel model_;
   bool dismissRequested_ = false;
 };

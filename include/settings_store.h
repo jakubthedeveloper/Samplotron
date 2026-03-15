@@ -17,6 +17,7 @@ struct SamplerSettings {
 
   String version;
   uint32_t sampleRamBudgetBytes = kDefaultSampleRamBudgetBytes;
+  int16_t panicNote = -1;
 
   int assignmentCount = 0;
   MidiAssignment assignments[kMaxAssignments];

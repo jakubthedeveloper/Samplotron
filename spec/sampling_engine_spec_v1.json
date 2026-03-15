@@ -289,6 +289,7 @@
       "version": "string",
       "global_settings": {
         "sample_ram_budget_bytes": "integer",
+        "panic_note_optional": "integer_0_to_127",
         "master_volume_optional": "number"
       },
       "midi_assignments": [
@@ -341,6 +342,7 @@
     "mapping_model": "one MIDI note maps to one sample path in v1",
     "sample_behavior": "one-shot playback to end",
     "retrigger_behavior": "retriggering the same sample stops its previous playback instance and restarts it from frame 0 on the same voice when possible (no self-layering)",
+    "panic_behavior": "if Note On matches configured panic note, stop all active voices immediately and skip sample trigger resolution for that event",
     "velocity_support": "optional_gain_scaling_if_easy",
     "note_off_behavior": "ignored_for_basic_one_shot_v1",
     "preview_behavior": {
@@ -368,6 +370,7 @@
   "runtime_flows": {
     "midi_note_on": [
       "MIDI input receives Note On",
+      "if note matches configured panic note: stop all active voices and end flow for this event",
       "resolve assigned sample for note",
       "push trigger event to audio trigger queue",
       "audio engine reuses the currently active voice for the same sample when retriggered; otherwise allocates free voice or steals oldest active voice",
@@ -512,6 +515,7 @@
   },
   "acceptance_criteria": [
     "After reboot, saved assignments and settings are restored automatically without manual reconfiguration.",
+    "If configured panic note is received as MIDI NOTE ON, all active voices stop immediately.",
     "The engine supports 8 simultaneous voices under normal operation.",
     "When a 9th trigger arrives, the oldest active voice is stolen and replaced deterministically.",
     "Audio mixing runs on a dedicated core/task domain isolated from UI and loader work.",

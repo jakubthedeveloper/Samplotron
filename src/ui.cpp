@@ -51,6 +51,9 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
   }
 
   currentSampleIndex_ = (sampleCount_ > 0) ? 0 : -1;
+  panicMidiNote_ = -1;
+  libraryAssignsPanic_ = false;
+  assigningPanic_ = false;
   lastTriggeredSampleIndex_ = -1;
   lastMidiNote_ = -1;
   mainSelection_ = 0;
@@ -87,7 +90,11 @@ void Ui::handleEvent(const Event &event) {
     lastMidiNote_ = clampValue(event.value, 0, 127);
     midiPulseUntilMs_ = millis() + kMidiPulseMs;
     if (state_ == State::AssignNote) {
-      setMidiAssignment(lastMidiNote_, currentSampleIndex_);
+      if (assigningPanic_) {
+        setPanicMidiNote(lastMidiNote_);
+      } else {
+        setMidiAssignment(lastMidiNote_, currentSampleIndex_);
+      }
       transitionTo(State::Library);
     } else {
       markDirty();
@@ -207,6 +214,22 @@ int Ui::assignedSampleForMidiNote(int note) const {
   return sampleForMidiNote_[note];
 }
 
+bool Ui::setPanicMidiNote(int note) {
+  if (note < 0 || note > 127) return false;
+  if (panicMidiNote_ == note) {
+    markDirty();
+    return true;
+  }
+  panicMidiNote_ = note;
+  hasUnsavedChanges_ = true;
+  markDirty();
+  return true;
+}
+
+int Ui::panicMidiNote() const {
+  return panicMidiNote_;
+}
+
 bool Ui::setSampleVolume(int sampleIndex, int volume) {
   if (sampleIndex < 0 || sampleIndex >= sampleCount_) return false;
   const int clamped = clampValue(volume, kVolumeMin, kVolumeMax);
@@ -243,6 +266,9 @@ void Ui::updateDerivedModel() {
   model_.lastMidiNote = lastMidiNote_;
   model_.libraryWindowStart = libraryWindowStart_;
   model_.assignedNoteForSelectedSample = findAssignedNoteForSample(currentSampleIndex_);
+  model_.panicNote = panicMidiNote_;
+  model_.libraryAssignsPanic = libraryAssignsPanic_;
+  model_.assigningPanic = assigningPanic_;
   model_.showSavedFeedback = (saveFeedbackUntilMs_ != 0);
   model_.lastSaveSucceeded = lastSaveSucceeded_;
   model_.hasUnsavedChanges = hasUnsavedChanges_;
@@ -300,6 +326,7 @@ void Ui::handleLibraryEvent(const Event &event) {
       transitionTo(State::Main);
       return;
     case EventType::RightRotate:
+      if (libraryAssignsPanic_) return;
       if (sampleCount_ <= 0) return;
       currentSampleIndex_ = wrapIndex(currentSampleIndex_ + event.value, sampleCount_);
       if (currentSampleIndex_ < libraryWindowStart_) {
@@ -313,9 +340,13 @@ void Ui::handleLibraryEvent(const Event &event) {
       triggerPreview(currentSampleIndex_);
       return;
     case EventType::RightLongPress:
+      assigningPanic_ = libraryAssignsPanic_;
       transitionTo(State::AssignNote);
       return;
     case EventType::LeftRotate:
+      libraryAssignsPanic_ = (wrapIndex((libraryAssignsPanic_ ? 1 : 0) + event.value, 2) == 1);
+      markDirty();
+      return;
     case EventType::MidiNoteOn:
       return;
   }
@@ -324,6 +355,7 @@ void Ui::handleLibraryEvent(const Event &event) {
 void Ui::handleAssignEvent(const Event &event) {
   switch (event.type) {
     case EventType::LeftClick:
+      assigningPanic_ = false;
       transitionTo(State::Library);
       return;
     case EventType::LeftRotate:
@@ -340,6 +372,9 @@ void Ui::transitionTo(State state) {
   if (state_ == State::Saving) {
     startSave();
     return;
+  }
+  if (state_ != State::AssignNote) {
+    assigningPanic_ = false;
   }
   markDirty();
 }

@@ -73,7 +73,7 @@ void DisplaySsd1309::renderBootScreen(const BootScreenModel &model) {
   gDisplay.drawStr(0, 34, line1);
   gDisplay.drawStr(0, 44, line2);
   gDisplay.drawStr(0, 54, line3);
-  gDisplay.drawStr(0, 63, model.loading ? "Loading..." : "Ready (press/turn to skip)");
+  gDisplay.drawStr(0, 63, model.loading ? "Loading..." : "Ready");
 
   gDisplay.sendBuffer();
   dirty_ = false;
@@ -196,44 +196,61 @@ void DisplaySsd1309::renderLibrary(const Ui::RenderModel &model, const Ui &ui) {
   gDisplay.setFont(u8g2_font_5x8_tf);
   gDisplay.drawStr(0, 8, "LIBRARY");
 
-  const int start = model.libraryWindowStart;
-  for (int row = 0; row < 3; row++) {
-    const int sampleIndex = start + row;
-    const int y = 20 + row * 9;
-    if (sampleIndex >= model.sampleCount) break;
+  if (!model.libraryAssignsPanic) {
+    const int start = model.libraryWindowStart;
+    for (int row = 0; row < 3; row++) {
+      const int sampleIndex = start + row;
+      const int y = 20 + row * 9;
+      if (sampleIndex >= model.sampleCount) break;
 
-    const bool selected = (sampleIndex == model.currentSampleIndex);
-    String line = (selected ? "> " : "  ");
-    line += sampleLabel(sampleIndex, ui.sampleNameAt(sampleIndex));
-    if (selected) {
-      gDisplay.drawBox(0, y - 7, 128, 9);
-      gDisplay.setDrawColor(0);
-      gDisplay.drawStr(0, y, line.c_str());
-      gDisplay.setDrawColor(1);
-    } else {
-      gDisplay.drawStr(0, y, line.c_str());
+      const bool selected = (sampleIndex == model.currentSampleIndex);
+      String line = (selected ? "> " : "  ");
+      line += sampleLabel(sampleIndex, ui.sampleNameAt(sampleIndex));
+      if (selected) {
+        gDisplay.drawBox(0, y - 7, 128, 9);
+        gDisplay.setDrawColor(0);
+        gDisplay.drawStr(0, y, line.c_str());
+        gDisplay.setDrawColor(1);
+      } else {
+        gDisplay.drawStr(0, y, line.c_str());
+      }
     }
   }
 
-  String assigned = "Assigned: ";
-  if (model.assignedNoteForSelectedSample >= 0) {
-    assigned += midiNoteLabel(model.assignedNoteForSelectedSample);
-    assigned += " (";
-    assigned += String(model.assignedNoteForSelectedSample);
-    assigned += ")";
+  if (model.libraryAssignsPanic) {
+    gDisplay.drawStr(0, 24, "PANIC MODE");
+    String panic = "Trigger: ";
+    if (model.panicNote >= 0) {
+      panic += midiNoteLabel(model.panicNote);
+      panic += " (";
+      panic += String(model.panicNote);
+      panic += ")";
+    } else {
+      panic += "--";
+    }
+    gDisplay.drawStr(0, 35, panic.c_str());
   } else {
-    assigned += "--";
+    String assigned = "Assigned: ";
+    if (model.assignedNoteForSelectedSample >= 0) {
+      assigned += midiNoteLabel(model.assignedNoteForSelectedSample);
+      assigned += " (";
+      assigned += String(model.assignedNoteForSelectedSample);
+      assigned += ")";
+    } else {
+      assigned += "--";
+    }
+    gDisplay.drawStr(0, 47, assigned.c_str());
   }
-  gDisplay.drawStr(0, 47, assigned.c_str());
 
   gDisplay.setFont(u8g2_font_4x6_tf);
-  gDisplay.drawStr(0, 57, "L: back        R: browse");
+  gDisplay.drawStr(0, 57, model.libraryAssignsPanic ? "L clk:back L rot:mode"
+                                                     : "L clk:back L rot:mode R:browse");
   gDisplay.drawStr(0, 63, "R click: play  R hold: assign");
 }
 
 void DisplaySsd1309::renderAssign(const Ui::RenderModel &model, const Ui &ui) {
   gDisplay.setFont(u8g2_font_5x8_tf);
-  gDisplay.drawStr(0, 8, "ASSIGN NOTE");
+  gDisplay.drawStr(0, 8, model.assigningPanic ? "ASSIGN PANIC" : "ASSIGN NOTE");
 
   String sample = "Sample: ";
   if (model.currentSampleIndex >= 0) {
@@ -242,16 +259,27 @@ void DisplaySsd1309::renderAssign(const Ui::RenderModel &model, const Ui &ui) {
     sample += "---";
   }
   gDisplay.drawStr(0, 20, sample.c_str());
-  gDisplay.drawStr(0, 31, "Play note to assign");
+  gDisplay.drawStr(0, 31, model.assigningPanic ? "Play note for panic" : "Play note to assign");
 
   String current = "Current: ";
-  if (model.assignedNoteForSelectedSample >= 0) {
-    current += midiNoteLabel(model.assignedNoteForSelectedSample);
-    current += " (";
-    current += String(model.assignedNoteForSelectedSample);
-    current += ")";
+  if (model.assigningPanic) {
+    if (model.panicNote >= 0) {
+      current += midiNoteLabel(model.panicNote);
+      current += " (";
+      current += String(model.panicNote);
+      current += ")";
+    } else {
+      current += "--";
+    }
   } else {
-    current += "--";
+    if (model.assignedNoteForSelectedSample >= 0) {
+      current += midiNoteLabel(model.assignedNoteForSelectedSample);
+      current += " (";
+      current += String(model.assignedNoteForSelectedSample);
+      current += ")";
+    } else {
+      current += "--";
+    }
   }
   gDisplay.drawStr(0, 42, current.c_str());
 

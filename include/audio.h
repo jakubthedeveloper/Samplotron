@@ -21,6 +21,7 @@ class Audio {
   void begin();
   void update();
   void playSamplePath(const String &samplePath, uint8_t volume = 100, int16_t retriggerGroupId = -1);
+  void stopAllVoices();
   bool playSampleRam(const uint8_t *pcmData,
                      uint32_t dataBytes,
                      uint16_t channelCount,

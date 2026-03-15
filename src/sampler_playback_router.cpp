@@ -37,6 +37,13 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
 void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   if (!ui_ || !catalog_ || !runtime_ || !triggerEngine_) return;
 
+  if (ui_->panicMidiNote() == midiNote) {
+    if (!triggerEngine_->panicAll() && DebugFlags::kEnableDebugLogs) {
+      Serial.println("Trigger queue full (panic dropped)");
+    }
+    return;
+  }
+
   const int sampleIndex = ui_->assignedSampleForMidiNote(midiNote);
   if (sampleIndex < 0 || sampleIndex >= catalog_->count) {
     ui_->clearTriggeredSample();

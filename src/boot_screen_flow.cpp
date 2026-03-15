@@ -1,8 +1,9 @@
 #include "boot_screen_flow.h"
 
-void BootScreenFlow::begin(DisplaySsd1309 *display, Input *input) {
+void BootScreenFlow::begin(DisplaySsd1309 *display, Input *input, Ui *ui) {
   display_ = display;
   input_ = input;
+  ui_ = ui;
   dismissRequested_ = false;
 }
 
@@ -20,12 +21,16 @@ void BootScreenFlow::render(bool loading,
 }
 
 void BootScreenFlow::waitForDismissOrTimeout(unsigned long timeoutMs) {
-  if (!input_) return;
+  if (!input_ || !ui_) return;
 
   dismissRequested_ = false;
   const unsigned long untilMs = millis() + timeoutMs;
   while (!dismissRequested_ && millis() < untilMs) {
     input_->update(onInputEvent, this);
+    if (ui_->model().lastMidiNote >= 0) {
+      dismissRequested_ = true;
+      break;
+    }
     delay(5);
   }
 }

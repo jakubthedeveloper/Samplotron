@@ -21,6 +21,8 @@ namespace {
 struct TriggerStubState {
   std::vector<TriggerEvent> events;
   std::deque<bool> enqueueResults;
+  int panicCalls = 0;
+  bool panicResult = true;
 };
 
 struct RuntimeStubState {
@@ -39,6 +41,8 @@ const String kPaths[kSampleCount] = {"/samples/kick.wav", "/samples/snare.wav"};
 void resetTriggerStub() {
   gTriggerStub.events.clear();
   gTriggerStub.enqueueResults.clear();
+  gTriggerStub.panicCalls = 0;
+  gTriggerStub.panicResult = true;
 }
 
 void setTriggerEnqueueResults(std::initializer_list<bool> results) {
@@ -120,6 +124,23 @@ void test_assigned_note_without_assignment_clears_last_triggered_sample() {
   router.onAssignedMidiNoteOn(60);
 
   TEST_ASSERT_EQUAL_INT(-1, ui.model().lastTriggeredSampleIndex);
+  TEST_ASSERT_EQUAL_UINT32(0, gTriggerStub.events.size());
+}
+
+void test_panic_note_calls_trigger_engine_panic_and_skips_playback() {
+  Ui ui = createUi();
+  const SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+
+  TEST_ASSERT_TRUE(ui.setMidiAssignment(60, 1));
+  TEST_ASSERT_TRUE(ui.setPanicMidiNote(60));
+
+  router.onAssignedMidiNoteOn(60);
+
+  TEST_ASSERT_EQUAL_INT(1, gTriggerStub.panicCalls);
   TEST_ASSERT_EQUAL_UINT32(0, gTriggerStub.events.size());
 }
 
@@ -259,6 +280,11 @@ bool TriggerEngine::enqueue(const TriggerEvent &event) {
   return result;
 }
 
+bool TriggerEngine::panicAll() {
+  gTriggerStub.panicCalls++;
+  return gTriggerStub.panicResult;
+}
+
 bool TriggerEngine::waitForIdle(uint32_t) const {
   return true;
 }
@@ -325,6 +351,7 @@ int main() {
   UNITY_BEGIN();
   RUN_TEST(test_preview_enqueues_stream_event_with_ui_volume_and_path);
   RUN_TEST(test_assigned_note_without_assignment_clears_last_triggered_sample);
+  RUN_TEST(test_panic_note_calls_trigger_engine_panic_and_skips_playback);
   RUN_TEST(test_assigned_note_unavailable_does_not_enqueue);
   RUN_TEST(test_assigned_note_ram_mode_enqueues_ram_event);
   RUN_TEST(test_assigned_note_ram_enqueue_failure_falls_back_to_stream);

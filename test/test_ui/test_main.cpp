@@ -84,6 +84,50 @@ void test_library_preview_triggers_callback_and_marks_last_sample() {
   TEST_ASSERT_EQUAL_INT(1, ui.model().lastTriggeredSampleIndex);
 }
 
+void test_library_left_rotate_toggles_panic_assign_mode() {
+  Ui ui = createUi();
+
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  TEST_ASSERT_FALSE(ui.model().libraryAssignsPanic);
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 1});
+  TEST_ASSERT_TRUE(ui.model().libraryAssignsPanic);
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 1});
+  TEST_ASSERT_FALSE(ui.model().libraryAssignsPanic);
+}
+
+void test_assign_panic_note_from_library_mode() {
+  Ui ui = createUi();
+
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  ui.handleEvent({Ui::EventType::LeftRotate, 1});
+  ui.handleEvent({Ui::EventType::RightLongPress, 0});
+  TEST_ASSERT_EQUAL(Ui::State::AssignNote, ui.model().state);
+  TEST_ASSERT_TRUE(ui.model().assigningPanic);
+
+  ui.handleEvent({Ui::EventType::MidiNoteOn, 42});
+
+  TEST_ASSERT_EQUAL(Ui::State::Library, ui.model().state);
+  TEST_ASSERT_EQUAL_INT(42, ui.panicMidiNote());
+  TEST_ASSERT_FALSE(ui.model().assigningPanic);
+  TEST_ASSERT_TRUE(ui.model().hasUnsavedChanges);
+}
+
+void test_library_right_rotate_is_ignored_in_panic_mode() {
+  Ui ui = createUi();
+
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  ui.handleEvent({Ui::EventType::RightRotate, 1});
+  TEST_ASSERT_EQUAL_INT(1, ui.model().currentSampleIndex);
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 1});
+  TEST_ASSERT_TRUE(ui.model().libraryAssignsPanic);
+
+  ui.handleEvent({Ui::EventType::RightRotate, 1});
+  TEST_ASSERT_EQUAL_INT(1, ui.model().currentSampleIndex);
+}
+
 void test_save_flow_executes_callback_and_clears_unsaved_changes_after_delay() {
   Ui ui = createUi();
 
@@ -132,6 +176,9 @@ int main() {
   RUN_TEST(test_midi_assignment_keeps_sample_unique);
   RUN_TEST(test_input_ui_bridge_maps_right_click_to_library_transition);
   RUN_TEST(test_library_preview_triggers_callback_and_marks_last_sample);
+  RUN_TEST(test_library_left_rotate_toggles_panic_assign_mode);
+  RUN_TEST(test_assign_panic_note_from_library_mode);
+  RUN_TEST(test_library_right_rotate_is_ignored_in_panic_mode);
   RUN_TEST(test_save_flow_executes_callback_and_clears_unsaved_changes_after_delay);
   return UNITY_END();
 }

@@ -21,6 +21,10 @@ bool SamplerRuntime::loadSettingsFromSd() {
 }
 
 void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &catalog) const {
+  if (settings_.panicNote >= 0 && settings_.panicNote <= 127) {
+    ui.setPanicMidiNote(settings_.panicNote);
+  }
+
   int applied = 0;
   int missing = 0;
   for (int i = 0; i < settings_.assignmentCount; i++) {
@@ -44,6 +48,7 @@ void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &
 }
 
 void SamplerRuntime::collectAssignmentsFromUi(const Ui &ui, const SampleLibrary::Catalog &catalog) {
+  settings_.panicNote = static_cast<int16_t>(ui.panicMidiNote());
   settings_.assignmentCount = 0;
   for (int note = 0; note < 128; note++) {
     if (settings_.assignmentCount >= SettingsStore::SamplerSettings::kMaxAssignments) {

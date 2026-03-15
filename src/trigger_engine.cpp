@@ -40,6 +40,12 @@ bool TriggerEngine::enqueue(const TriggerEvent &event) {
   return xQueueSend(triggerQueue_, &event, 0) == pdTRUE;
 }
 
+bool TriggerEngine::panicAll() {
+  TriggerEvent event;
+  event.source = TriggerSourceType::PanicAll;
+  return enqueue(event);
+}
+
 bool TriggerEngine::waitForIdle(uint32_t timeoutMs) const {
   const uint32_t deadline = millis() + timeoutMs;
   while (millis() < deadline) {
@@ -105,6 +111,11 @@ void TriggerEngine::runAudioTask() {
 
 void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
   if (!audio_) return;
+
+  if (event.source == TriggerSourceType::PanicAll) {
+    audio_->stopAllVoices();
+    return;
+  }
 
   if (event.source == TriggerSourceType::RamData) {
     if (event.ramData && event.ramDataBytes > 0) {

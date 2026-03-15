@@ -83,7 +83,8 @@ Minimal format:
 {
   "version": "1.0",
   "global_settings": {
-    "sample_ram_budget_bytes": 1048576
+    "sample_ram_budget_bytes": 1048576,
+    "panic_note": 24
   },
   "midi_assignments": [
     {
@@ -98,6 +99,7 @@ Minimal format:
 Notes:
 
 - `note`: `0..127`
+- `panic_note`: optional `0..127`; when received as MIDI NOTE ON, all active voices are stopped immediately
 - `volume`: clamped to `0..100`
 - `volume = 100`: full per-voice level (before fixed mixer headroom)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
@@ -124,6 +126,7 @@ Playback engine behavior:
 - each trigger allocates a free voice slot when available,
 - retriggering the same sample reuses its active voice slot when possible (previous instance is stopped and restarted from frame `0`, so the sample does not layer with itself),
 - if all voices are active, the incoming trigger steals the oldest active voice (deterministic `oldest-voice` policy),
+- if incoming MIDI NOTE ON matches configured panic note, all currently active voices are stopped,
 - works for both SD-streamed and RAM-backed sample playback,
 - per-voice mixer gain is attenuated by a fixed headroom factor (`kPerVoiceMixHeadroomGain = 0.125`) so 8 full-scale voices can be mixed without clipping.
 - trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
@@ -146,8 +149,9 @@ UI states:
 Flow:
 
 - in `Library`, you select a sample and trigger preview,
-- long-pressing the right button enters `AssignNote`,
-- the first received MIDI note assigns the current sample to that note,
+- `L rotate` in `Library` toggles assignment mode between `Sample` and `Panic`,
+- long-pressing the right button enters `AssignNote` for the current mode,
+- the first received MIDI note assigns either the current sample or the global panic note (depending on selected mode),
 - `SAVE` writes configuration (`/sampler_config.json`) and refreshes classification + RAM preload.
 
 Assignment rules:

@@ -64,6 +64,10 @@
       "description": "Mapping of MIDI note number to sample index",
       "recommended_structure": "sample_for_note[128]"
     },
+    "panic_assignment": {
+      "description": "Optional global panic MIDI note; NOTE ON for this note stops all active voices",
+      "recommended_structure": "panic_note_or_minus_one"
+    },
     "storage": {
       "preferred_backend": "ESP32_NVS",
       "save_contains": [
@@ -154,24 +158,34 @@
         }
       },
       "LIBRARY": {
-        "purpose": "Browse samples, preview them, and enter MIDI note assignment mode.",
+        "purpose": "Browse samples, preview them, choose assignment target (sample or panic), and enter assignment mode.",
         "layout": {
           "fields": [
             "library_title",
             "sample_list_window",
             "selected_sample_index",
             "selected_sample_name",
+            "assignment_mode",
             "assigned_midi_note_name",
-            "assigned_midi_note_number"
+            "assigned_midi_note_number",
+            "panic_note_name_optional",
+            "panic_note_number_optional"
           ],
           "help_bar": [
-            "L: back        R: browse",
-            "R click: play  R hold: assign"
+            "L click: back  L rot: mode  R: browse",
+            "R click: play  R hold: assign/ panic"
           ]
         },
         "actions": {
           "on_left_click": {
             "transition_to": "MAIN"
+          },
+          "on_left_rotate": {
+            "type": "toggle_assignment_mode",
+            "options": [
+              "sample_assignment",
+              "panic_assignment"
+            ]
           },
           "on_right_rotate": {
             "type": "browse_samples",
@@ -187,14 +201,17 @@
         }
       },
       "ASSIGN_NOTE": {
-        "purpose": "Wait for incoming MIDI NOTE ON and assign it to the currently selected sample.",
+        "purpose": "Wait for incoming MIDI NOTE ON and assign it either to the selected sample or to panic note, depending on mode selected in LIBRARY.",
         "layout": {
           "fields": [
             "assign_title",
+            "assign_mode",
             "selected_sample_index",
             "selected_sample_name",
             "current_assigned_note_name",
             "current_assigned_note_number",
+            "current_panic_note_name_optional",
+            "current_panic_note_number_optional",
             "waiting_for_midi_message"
           ],
           "help_bar": [
@@ -209,7 +226,11 @@
             "transition_to": "LIBRARY"
           },
           "on_midi_note_on": {
-            "type": "assign_selected_sample_to_received_note",
+            "type": "assign_selected_target_to_received_note",
+            "target_by_mode": {
+              "sample_assignment": "selected_sample",
+              "panic_assignment": "panic_note"
+            },
             "payload": [
               "note_number"
             ],

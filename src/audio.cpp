@@ -612,6 +612,14 @@ void Audio::playSamplePath(const String &samplePath, uint8_t volume, int16_t ret
   recordPlayCost(impl_, micros() - playStartUs);
 }
 
+void Audio::stopAllVoices() {
+  if (!impl_) return;
+  for (int i = 0; i < kVoiceCount; i++) {
+    stopVoice(impl_->voices[i]);
+  }
+  refreshStats(impl_);
+}
+
 bool Audio::playSampleRam(const uint8_t *pcmData,
                           uint32_t dataBytes,
                           uint16_t channelCount,
