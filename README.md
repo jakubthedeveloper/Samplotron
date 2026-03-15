@@ -1,4 +1,9 @@
 # Samplotron
+
+![Samplotron](Samplotron.jpg)
+
+Samplotron is a hands-on hardware sampler for musicians and producers: load your own WAV sounds from SD, assign them to MIDI notes, perform with immediate control over volume and shot/loop behavior, and save your live setup in seconds. Start with the workflow guide here: [`docs/manual.md`](docs/manual.md).
+
 [![Build Main Firmware](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml/badge.svg)](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml)
 
 [Latest firmware.bin](https://github.com/jakubthedeveloper/Samplotron/releases/download/main-latest/firmware.bin)
