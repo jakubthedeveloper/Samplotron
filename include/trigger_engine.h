@@ -16,6 +16,7 @@ enum class TriggerSourceType : uint8_t {
 struct TriggerEvent {
   TriggerSourceType source = TriggerSourceType::StreamPath;
   uint8_t volume = 100;
+  int16_t retriggerGroupId = -1;
   char path[128] = {0};
 
   const uint8_t *ramData = nullptr;

@@ -113,12 +113,13 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
                             event.channelCount,
                             event.sampleRate,
                             event.bitsPerSample,
-                            event.volume);
+                            event.volume,
+                            event.retriggerGroupId);
     }
     return;
   }
 
   if (event.path[0] != '\0') {
-    audio_->playSamplePath(String(event.path), event.volume);
+    audio_->playSamplePath(String(event.path), event.volume, event.retriggerGroupId);
   }
 }

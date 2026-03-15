@@ -340,6 +340,7 @@
     "trigger_source": "MIDI Note On",
     "mapping_model": "one MIDI note maps to one sample path in v1",
     "sample_behavior": "one-shot playback to end",
+    "retrigger_behavior": "retriggering the same sample stops its previous playback instance and restarts it from frame 0 on the same voice when possible (no self-layering)",
     "velocity_support": "optional_gain_scaling_if_easy",
     "note_off_behavior": "ignored_for_basic_one_shot_v1",
     "preview_behavior": {
@@ -369,7 +370,7 @@
       "MIDI input receives Note On",
       "resolve assigned sample for note",
       "push trigger event to audio trigger queue",
-      "audio engine allocates free voice or steals oldest active voice",
+      "audio engine reuses the currently active voice for the same sample when retriggered; otherwise allocates free voice or steals oldest active voice",
       "voice starts from frame 0 using RAM or stream source",
       "audio mixer renders into output buffer"
     ],

@@ -102,6 +102,7 @@ void test_preview_enqueues_stream_event_with_ui_volume_and_path() {
   const TriggerEvent &event = gTriggerStub.events[0];
   TEST_ASSERT_EQUAL(TriggerSourceType::StreamPath, event.source);
   TEST_ASSERT_EQUAL_UINT8(65, event.volume);
+  TEST_ASSERT_EQUAL_INT16(1, event.retriggerGroupId);
   TEST_ASSERT_EQUAL_STRING("/samples/snare.wav", event.path);
 }
 
@@ -178,6 +179,7 @@ void test_assigned_note_ram_mode_enqueues_ram_event() {
   const TriggerEvent &event = gTriggerStub.events[0];
   TEST_ASSERT_EQUAL(TriggerSourceType::RamData, event.source);
   TEST_ASSERT_EQUAL_UINT8(88, event.volume);
+  TEST_ASSERT_EQUAL_INT16(0, event.retriggerGroupId);
   TEST_ASSERT_EQUAL_PTR(kRamData, event.ramData);
   TEST_ASSERT_EQUAL_UINT32(sizeof(kRamData), event.ramDataBytes);
   TEST_ASSERT_EQUAL_UINT16(1, event.channelCount);
@@ -219,7 +221,9 @@ void test_assigned_note_ram_enqueue_failure_falls_back_to_stream() {
 
   TEST_ASSERT_EQUAL_UINT32(2, gTriggerStub.events.size());
   TEST_ASSERT_EQUAL(TriggerSourceType::RamData, gTriggerStub.events[0].source);
+  TEST_ASSERT_EQUAL_INT16(0, gTriggerStub.events[0].retriggerGroupId);
   TEST_ASSERT_EQUAL(TriggerSourceType::StreamPath, gTriggerStub.events[1].source);
+  TEST_ASSERT_EQUAL_INT16(0, gTriggerStub.events[1].retriggerGroupId);
   TEST_ASSERT_EQUAL_STRING("/samples/kick.wav", gTriggerStub.events[1].path);
 
   clearRuntimeState(runtime);

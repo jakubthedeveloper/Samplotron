@@ -197,6 +197,7 @@ struct Audio::Impl {
     bool active = false;
     uint32_t startOrder = 0;
     uint32_t startUs = 0;
+    int16_t retriggerGroupId = -1;
     AudioGeneratorWAV *wav = nullptr;
     AudioFileSourceRamWav *ramSource = nullptr;
     AudioFileSource *activeSource = nullptr;
@@ -239,6 +240,7 @@ void stopVoice(Audio::Impl::Voice &voice) {
   voice.active = false;
   voice.startOrder = 0;
   voice.startUs = 0;
+  voice.retriggerGroupId = -1;
   voice.targetGain = 0.0f;
   voice.currentGain = 0.0f;
 }
@@ -335,9 +337,18 @@ void recordPlayCost(Audio::Impl *impl, uint32_t elapsedUs) {
   }
 }
 
-int allocateVoiceSlot(Audio::Impl *impl, bool &voiceWasStolen) {
+int allocateVoiceSlot(Audio::Impl *impl, int16_t retriggerGroupId, bool &voiceWasStolen) {
   voiceWasStolen = false;
   if (!impl) return -1;
+
+  if (retriggerGroupId >= 0) {
+    for (int i = 0; i < Audio::kVoiceCount; i++) {
+      const Audio::Impl::Voice &voice = impl->voices[i];
+      if (voice.active && voice.retriggerGroupId == retriggerGroupId) {
+        return i;
+      }
+    }
+  }
 
   for (int i = 0; i < Audio::kVoiceCount; i++) {
     if (!impl->voices[i].active) {
@@ -363,7 +374,11 @@ int allocateVoiceSlot(Audio::Impl *impl, bool &voiceWasStolen) {
   return oldestIndex;
 }
 
-bool beginVoiceFromPath(Audio::Impl *impl, int voiceIndex, const String &samplePath, uint8_t volume) {
+bool beginVoiceFromPath(Audio::Impl *impl,
+                        int voiceIndex,
+                        const String &samplePath,
+                        uint8_t volume,
+                        int16_t retriggerGroupId) {
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   Audio::Impl::Voice &voice = impl->voices[voiceIndex];
@@ -392,6 +407,7 @@ bool beginVoiceFromPath(Audio::Impl *impl, int voiceIndex, const String &sampleP
     impl->nextStartOrder = 1;
   }
   voice.active = true;
+  voice.retriggerGroupId = retriggerGroupId;
   return true;
 }
 
@@ -402,7 +418,8 @@ bool beginVoiceFromRam(Audio::Impl *impl,
                        uint16_t channelCount,
                        uint32_t sampleRate,
                        uint16_t bitsPerSample,
-                       uint8_t volume) {
+                       uint8_t volume,
+                       int16_t retriggerGroupId) {
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   Audio::Impl::Voice &voice = impl->voices[voiceIndex];
@@ -428,6 +445,7 @@ bool beginVoiceFromRam(Audio::Impl *impl,
     impl->nextStartOrder = 1;
   }
   voice.active = true;
+  voice.retriggerGroupId = retriggerGroupId;
   return true;
 }
 
@@ -563,12 +581,12 @@ void Audio::update() {
   maybeLogRuntimeDiagnostics(impl_);
 }
 
-void Audio::playSamplePath(const String &samplePath, uint8_t volume) {
+void Audio::playSamplePath(const String &samplePath, uint8_t volume, int16_t retriggerGroupId) {
   if (!impl_ || samplePath.length() == 0) return;
   const uint32_t playStartUs = micros();
 
   bool voiceWasStolen = false;
-  const int voiceIndex = allocateVoiceSlot(impl_, voiceWasStolen);
+  const int voiceIndex = allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
   if (voiceIndex < 0) {
     Serial.println("No voice available");
     recordPlayCost(impl_, micros() - playStartUs);
@@ -583,7 +601,7 @@ void Audio::playSamplePath(const String &samplePath, uint8_t volume) {
   }
 
   stopVoice(voice);
-  if (!beginVoiceFromPath(impl_, voiceIndex, samplePath, volume)) {
+  if (!beginVoiceFromPath(impl_, voiceIndex, samplePath, volume, retriggerGroupId)) {
     Serial.println("Sample open/start failed");
     refreshStats(impl_);
     recordPlayCost(impl_, micros() - playStartUs);
@@ -599,12 +617,13 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                           uint16_t channelCount,
                           uint32_t sampleRate,
                           uint16_t bitsPerSample,
-                          uint8_t volume) {
+                          uint8_t volume,
+                          int16_t retriggerGroupId) {
   if (!impl_ || !pcmData || dataBytes == 0) return false;
   const uint32_t playStartUs = micros();
 
   bool voiceWasStolen = false;
-  const int voiceIndex = allocateVoiceSlot(impl_, voiceWasStolen);
+  const int voiceIndex = allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
   if (voiceIndex < 0) {
     recordPlayCost(impl_, micros() - playStartUs);
     return false;
@@ -625,7 +644,8 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                                          channelCount,
                                          sampleRate,
                                          bitsPerSample,
-                                         volume);
+                                         volume,
+                                         retriggerGroupId);
   refreshStats(impl_);
   recordPlayCost(impl_, micros() - playStartUs);
   return started;

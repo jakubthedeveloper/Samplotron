@@ -25,6 +25,7 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   TriggerEvent event;
   event.source = TriggerSourceType::StreamPath;
   event.volume = static_cast<uint8_t>(ui_->sampleVolumeForSample(sampleIndex));
+  event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
   const String &path = catalog_->paths[sampleIndex];
   path.toCharArray(event.path, sizeof(event.path));
 
@@ -70,6 +71,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
       TriggerEvent event;
       event.source = TriggerSourceType::RamData;
       event.volume = assignedVolume;
+      event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
       event.ramData = loadedData.data;
       event.ramDataBytes = loadedData.dataBytes;
       event.channelCount = classified->channelCount;
@@ -109,6 +111,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   TriggerEvent event;
   event.source = TriggerSourceType::StreamPath;
   event.volume = assignedVolume;
+  event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
   assignedPath.toCharArray(event.path, sizeof(event.path));
   if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
     Serial.println("Trigger queue full (assigned trigger dropped)");

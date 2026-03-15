@@ -122,6 +122,7 @@ Playback engine behavior:
 
 - fixed `8`-voice playback pool (`Audio::kVoiceCount`),
 - each trigger allocates a free voice slot when available,
+- retriggering the same sample reuses its active voice slot when possible (previous instance is stopped and restarted from frame `0`, so the sample does not layer with itself),
 - if all voices are active, the incoming trigger steals the oldest active voice (deterministic `oldest-voice` policy),
 - works for both SD-streamed and RAM-backed sample playback,
 - per-voice mixer gain is attenuated by a fixed headroom factor (`kPerVoiceMixHeadroomGain = 0.125`) so 8 full-scale voices can be mixed without clipping.
