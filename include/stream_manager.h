@@ -1,6 +1,8 @@
 #pragma once
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <stdint.h>
 
 class AudioFileSource;
@@ -33,9 +35,12 @@ class StreamManager {
 
  private:
   class BufferedSdSource;
+  static void refillTaskEntry(void *param);
+  void runRefillTask();
 
   BufferedSdSource *streams_[kMaxStreams] = {nullptr};
   uint8_t streamCount_ = 0;
   Diagnostics diagnostics_;
+  TaskHandle_t refillTaskHandle_ = nullptr;
+  volatile bool refillTaskRunning_ = false;
 };
-

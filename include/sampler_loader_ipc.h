@@ -4,10 +4,12 @@
 
 enum class LoaderCommandType : uint8_t {
   RebuildPreparedSamples,
+  PreviewSample,
 };
 
 struct LoaderCommand {
   LoaderCommandType type = LoaderCommandType::RebuildPreparedSamples;
+  int16_t sampleIndex = -1;
 };
 
 enum class UiStatusSource : uint8_t {
@@ -30,4 +32,3 @@ struct UiStatusEvent {
   uint32_t streamSampleCount = 0;
   uint32_t sampleRamUsedBytes = 0;
 };
-

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+
 #include "input.h"
 #include "midi.h"
+#include "sampler_loader_ipc.h"
 #include "sampler_playback_router.h"
 #include "sampler_save_service.h"
 #include "ui.h"
@@ -11,7 +15,8 @@ class SamplerCallbackBinder {
   void begin(Ui *ui,
              Midi *midi,
              SamplerPlaybackRouter *playbackRouter,
-             SamplerSaveService *saveService);
+             SamplerSaveService *saveService,
+             QueueHandle_t loaderCommandQueue);
   void bindUiAndMidiCallbacks();
   void pollInput(Input &input);
 
@@ -26,4 +31,5 @@ class SamplerCallbackBinder {
   Midi *midi_ = nullptr;
   SamplerPlaybackRouter *playbackRouter_ = nullptr;
   SamplerSaveService *saveService_ = nullptr;
+  QueueHandle_t loaderCommandQueue_ = nullptr;
 };

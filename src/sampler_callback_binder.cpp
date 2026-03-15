@@ -5,11 +5,13 @@
 void SamplerCallbackBinder::begin(Ui *ui,
                                   Midi *midi,
                                   SamplerPlaybackRouter *playbackRouter,
-                                  SamplerSaveService *saveService) {
+                                  SamplerSaveService *saveService,
+                                  QueueHandle_t loaderCommandQueue) {
   ui_ = ui;
   midi_ = midi;
   playbackRouter_ = playbackRouter;
   saveService_ = saveService;
+  loaderCommandQueue_ = loaderCommandQueue;
 }
 
 void SamplerCallbackBinder::bindUiAndMidiCallbacks() {
@@ -37,10 +39,15 @@ void SamplerCallbackBinder::onInputEvent(const Input::Event &event, void *contex
 
 void SamplerCallbackBinder::onPreviewSample(int sampleIndex, void *context) {
   auto *self = static_cast<SamplerCallbackBinder *>(context);
-  if (!self || !self->playbackRouter_) {
+  if (!self || !self->loaderCommandQueue_) {
     return;
   }
-  self->playbackRouter_->onPreviewSample(sampleIndex);
+  LoaderCommand command;
+  command.type = LoaderCommandType::PreviewSample;
+  command.sampleIndex = static_cast<int16_t>(sampleIndex);
+  if (xQueueSend(self->loaderCommandQueue_, &command, 0) != pdTRUE) {
+    Serial.println("Preview request dropped: loader queue full");
+  }
 }
 
 void SamplerCallbackBinder::onAssignedMidiNoteOn(int midiNote, void *context) {

@@ -99,7 +99,7 @@ void SamplerApp::prepareCallbacksAndBootFlow() {
   playbackRouter_.begin(&ui_, &catalog_, &runtime_, &triggerEngine_);
   saveService_.begin(
       &ui_, &catalog_, &runtime_, &triggerEngine_, loaderCommandQueue_, uiStatusQueue_);
-  callbackBinder_.begin(&ui_, &midi_, &playbackRouter_, &saveService_);
+  callbackBinder_.begin(&ui_, &midi_, &playbackRouter_, &saveService_, loaderCommandQueue_);
   bootScreenFlow_.waitForDismissOrTimeout();
 
   callbackBinder_.bindUiAndMidiCallbacks();
@@ -217,6 +217,13 @@ bool SamplerApp::requestLoaderRebuildAndWait(uint32_t timeoutMs) {
 }
 
 void SamplerApp::processLoaderCommand(const LoaderCommand &command) {
+  if (command.type == LoaderCommandType::PreviewSample) {
+    if (command.sampleIndex >= 0) {
+      playbackRouter_.onPreviewSample(static_cast<int>(command.sampleIndex));
+    }
+    return;
+  }
+
   UiStatusEvent status;
   status.source = UiStatusSource::SampleLoader;
   status.type = UiStatusType::LoaderRebuildCompleted;
@@ -236,7 +243,6 @@ void SamplerApp::processLoaderCommand(const LoaderCommand &command) {
                   static_cast<unsigned long>(status.streamSampleCount),
                   static_cast<unsigned long>(status.sampleRamUsedBytes));
   }
-
   if (xQueueSend(uiStatusQueue_, &status, pdMS_TO_TICKS(20)) != pdTRUE) {
     Serial.println("ui_status_queue full (loader status dropped)");
   }

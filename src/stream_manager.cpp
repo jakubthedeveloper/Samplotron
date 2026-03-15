@@ -5,6 +5,9 @@
 
 #include "AudioFileSource.h"
 #include "AudioFileSourceSD.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 
 namespace {
 
@@ -15,11 +18,21 @@ constexpr uint32_t kSlowReadThresholdUs = 3000;
 class StreamManager::BufferedSdSource : public AudioFileSource {
  public:
   explicit BufferedSdSource(Diagnostics *diagnostics) : diagnostics_(diagnostics) {}
+  ~BufferedSdSource() override {
+    close();
+    if (sourceMutex_) {
+      vSemaphoreDelete(sourceMutex_);
+      sourceMutex_ = nullptr;
+    }
+  }
 
   bool open(const char *path) override {
     if (!path || path[0] == '\0') return false;
     close();
-    if (!source_.open(path)) return false;
+    if (!sourceMutex_ || xSemaphoreTake(sourceMutex_, pdMS_TO_TICKS(20)) != pdTRUE) return false;
+    const bool opened = source_.open(path);
+    xSemaphoreGive(sourceMutex_);
+    if (!opened) return false;
 
     size_ = source_.getSize();
     pos_ = 0;
@@ -39,10 +52,7 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
     uint32_t remaining = len;
 
     while (remaining > 0) {
-      if (validBytes_ == 0) {
-        fillReadAhead(1);
-        if (validBytes_ == 0) break;
-      }
+      if (validBytes_ == 0) break;
 
       uint32_t contiguous = kReadAheadBufferBytes - readIndex_;
       if (contiguous > validBytes_) {
@@ -57,7 +67,6 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
       copied += chunk;
       remaining -= chunk;
 
-      fillReadAhead(remaining);
     }
 
     return copied;
@@ -91,17 +100,17 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
       return true;
     }
 
-    if (!source_.seek(static_cast<int32_t>(targetPos), SEEK_SET)) return false;
-    pos_ = targetPos;
-    readIndex_ = 0;
-    validBytes_ = 0;
-    eof_ = (pos_ >= size_);
-    fillReadAhead(kInitialReadAheadBytes);
-    return true;
+    // Avoid blocking SD seek from the audio thread. WAV parser should only
+    // seek within already buffered header/data window during steady playback.
+    return false;
   }
 
   bool close() override {
-    const bool closed = source_.close();
+    bool closed = false;
+    if (sourceMutex_ && xSemaphoreTake(sourceMutex_, pdMS_TO_TICKS(20)) == pdTRUE) {
+      closed = source_.close();
+      xSemaphoreGive(sourceMutex_);
+    }
     open_ = false;
     eof_ = false;
     pos_ = 0;
@@ -114,6 +123,11 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
   bool isOpen() override { return open_; }
   uint32_t getSize() override { return size_; }
   uint32_t getPos() override { return pos_; }
+  bool serviceRefill() {
+    if (!open_ || eof_) return false;
+    fillReadAhead(kTargetReadAheadBytes);
+    return true;
+  }
 
  private:
   static constexpr uint32_t kReadAheadBufferBytes = 8192;
@@ -141,9 +155,13 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
         contiguousFree = freeBytes;
       }
 
+      if (!sourceMutex_ || xSemaphoreTake(sourceMutex_, pdMS_TO_TICKS(5)) != pdTRUE) {
+        return;
+      }
       const uint32_t readStartUs = micros();
       const uint32_t readBytes = source_.read(buffer_ + writeIndex, contiguousFree);
       const uint32_t elapsedUs = micros() - readStartUs;
+      xSemaphoreGive(sourceMutex_);
       updateDiagnostics(readBytes, elapsedUs);
 
       if (readBytes == 0) {
@@ -173,6 +191,7 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
   }
 
   AudioFileSourceSD source_;
+  SemaphoreHandle_t sourceMutex_ = xSemaphoreCreateMutex();
   Diagnostics *diagnostics_ = nullptr;
   bool open_ = false;
   bool eof_ = false;
@@ -203,10 +222,31 @@ bool StreamManager::begin(uint8_t streamCount) {
   }
 
   streamCount_ = streamCount;
+  refillTaskRunning_ = true;
+  const BaseType_t taskOk = xTaskCreatePinnedToCore(refillTaskEntry,
+                                                     "stream_refill",
+                                                     4096,
+                                                     this,
+                                                     3,
+                                                     &refillTaskHandle_,
+                                                     0);
+  if (taskOk != pdPASS) {
+    refillTaskRunning_ = false;
+    shutdown();
+    return false;
+  }
   return true;
 }
 
 void StreamManager::shutdown() {
+  refillTaskRunning_ = false;
+  if (refillTaskHandle_) {
+    const uint32_t waitStartMs = millis();
+    while (refillTaskHandle_ && (millis() - waitStartMs) < 100) {
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    refillTaskHandle_ = nullptr;
+  }
   for (uint8_t i = 0; i < kMaxStreams; i++) {
     delete streams_[i];
     streams_[i] = nullptr;
@@ -241,3 +281,21 @@ const StreamManager::Diagnostics &StreamManager::diagnostics() const {
   return diagnostics_;
 }
 
+void StreamManager::refillTaskEntry(void *param) {
+  auto *self = static_cast<StreamManager *>(param);
+  self->runRefillTask();
+}
+
+void StreamManager::runRefillTask() {
+  while (refillTaskRunning_) {
+    for (uint8_t i = 0; i < streamCount_; i++) {
+      if (!streams_[i]) continue;
+      streams_[i]->serviceRefill();
+    }
+    // Always block briefly so IDLE0 can run and feed task watchdog.
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  TaskHandle_t current = refillTaskHandle_;
+  refillTaskHandle_ = nullptr;
+  vTaskDelete(current ? current : nullptr);
+}

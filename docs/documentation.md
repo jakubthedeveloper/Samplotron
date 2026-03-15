@@ -130,6 +130,8 @@ Playback engine behavior:
 - if all voices are active, the incoming trigger steals the oldest active voice (deterministic `oldest-voice` policy),
 - if incoming MIDI NOTE ON matches configured panic note, all currently active voices are stopped,
 - works for both SD-streamed and RAM-backed sample playback,
+- SD-streamed voices use per-voice read-ahead RAM buffers that are refilled by a dedicated `stream_refill`
+  task; the audio update loop consumes already buffered data (no direct SD read in the critical mix loop),
 - per-voice mixer gain is attenuated by a fixed headroom factor (`kPerVoiceMixHeadroomGain = 0.125`) so 8 full-scale voices can be mixed without clipping.
 - trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
 
@@ -151,6 +153,8 @@ UI states:
 Flow:
 
 - in `Library`, you select a sample and trigger preview,
+- preview requests are sent as `PreviewSample` command to `sample_loader` queue before playback routing,
+- in `Main`, `VOL` and `SHOT/LOOP` are shown only when an active sample exists,
 - in `Main`, `SHOT/LOOP` toggles one-shot vs loop for the currently active sample,
 - `L rotate` in `Library` toggles assignment mode between `Sample` and `Panic`,
 - long-pressing the right button enters `AssignNote` for the current mode,
@@ -275,3 +279,4 @@ Assignment rules:
 - `src/sample_ram_manager.cpp`: pool allocation and WAV data preload into RAM
 - `src/active_sample_registry.cpp`: final active-sample registry after fallback handling
 - `src/audio.cpp`: 8-voice playback engine (SD + RAM), mixer, and oldest-voice stealing
+- `src/stream_manager.cpp`: buffered SD stream sources and background refill task for streamed voices

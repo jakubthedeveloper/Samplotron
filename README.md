@@ -13,9 +13,11 @@ Architecture note: `src/main.cpp` is a thin entrypoint, while runtime orchestrat
 - 8-voice polyphony with deterministic oldest-voice stealing.
 - Playback format for assigned samples is enforced to WAV PCM16, 44.1kHz, mono.
 - Audio playback runs in a dedicated FreeRTOS task/core with trigger events passed by queue.
+- SD stream refill runs in a dedicated task; audio-domain stream reads are served from RAM read-ahead buffers.
 - OLED UI with 2 encoders (via MCP23017).
 - On-device MIDI note to sample assignment.
-- Persistent assignments and sample volumes in `sampler_config.json`.
+- Per-sample `SHOT/LOOP` playback mode (stored in config).
+- Persistent assignments, sample volumes, and playback mode in `sampler_config.json`.
 - Automatic RAM preload for short samples (faster trigger response).
 
 ## Quick Start
@@ -54,11 +56,13 @@ python -m esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash -z 
 
 ## Controls (Short Version)
 
-- Main screen: `LIB`, `VOL`, `SAVE`.
+- Main screen: `LIB`, optional `VOL` + `SHOT/LOOP` (when a sample is active), optional `SAVE` (when dirty).
 - `VOL`: range `0..100`, step `5` per encoder tick.
+- `SHOT/LOOP`: toggles playback mode for the active sample.
 - Library: browse samples and preview playback.
+- Preview requests are queued through `sample_loader` before playback routing.
 - Hold right encoder button in Library: MIDI note assignment mode.
-- `SAVE`: writes assignments and volumes to SD.
+- `SAVE`: writes assignments, volumes, and playback mode to SD.
 
 ## Debug Firmware
 
