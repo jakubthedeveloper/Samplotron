@@ -5,6 +5,7 @@
 #include <SD.h>
 
 #include <ArduinoJson.h>
+#include <string.h>
 
 namespace {
 
@@ -25,6 +26,18 @@ uint8_t clampVolume(long volume) {
   if (volume < 0) return 0;
   if (volume > 100) return 100;
   return static_cast<uint8_t>(volume);
+}
+
+bool parseLoopPlaybackEnabled(const JsonVariantConst &variant, bool defaultValue) {
+  if (variant.is<const char *>()) {
+    const char *value = variant.as<const char *>();
+    if (!value) return defaultValue;
+    return strcmp(value, "loop") == 0;
+  }
+  if (variant.is<bool>()) {
+    return variant.as<bool>();
+  }
+  return defaultValue;
 }
 
 void ensureParentDirectoryExists(const char *path) {
@@ -76,12 +89,15 @@ bool loadFromSd(SamplerSettings &settings) {
   }
 
   JsonObject globalSettings = gSettingsJsonDoc["global_settings"].as<JsonObject>();
+  bool defaultLoopPlaybackEnabled = false;
   if (!globalSettings.isNull()) {
     if (globalSettings["sample_ram_budget_bytes"].is<uint32_t>()) {
       settings.sampleRamBudgetBytes = globalSettings["sample_ram_budget_bytes"].as<uint32_t>();
     }
     const long panicNote = globalSettings["panic_note"] | -1;
     settings.panicNote = isValidNote(panicNote) ? static_cast<int16_t>(panicNote) : -1;
+    defaultLoopPlaybackEnabled =
+        parseLoopPlaybackEnabled(globalSettings["playback_mode"], defaultLoopPlaybackEnabled);
   }
 
   JsonArray assignments = gSettingsJsonDoc["midi_assignments"].as<JsonArray>();
@@ -99,6 +115,8 @@ bool loadFromSd(SamplerSettings &settings) {
     const char *pathCStr = assignment["sample_path"] | "";
     const long volume = assignment["volume"] | 100;
     const String samplePath(pathCStr);
+    const bool loopPlaybackEnabled =
+        parseLoopPlaybackEnabled(assignment["playback_mode"], defaultLoopPlaybackEnabled);
 
     if (!isValidNote(note) || !isNonEmptyPath(samplePath)) {
       continue;
@@ -107,6 +125,7 @@ bool loadFromSd(SamplerSettings &settings) {
     settings.assignments[settings.assignmentCount].note = static_cast<uint8_t>(note);
     settings.assignments[settings.assignmentCount].samplePath = samplePath;
     settings.assignments[settings.assignmentCount].volume = clampVolume(volume);
+    settings.assignments[settings.assignmentCount].loopPlaybackEnabled = loopPlaybackEnabled;
     settings.assignmentCount++;
   }
 
@@ -137,6 +156,7 @@ bool saveToSd(const SamplerSettings &settings) {
     entry["note"] = assignment.note;
     entry["sample_path"] = assignment.samplePath;
     entry["volume"] = assignment.volume;
+    entry["playback_mode"] = assignment.loopPlaybackEnabled ? "loop" : "shot";
   }
 
   SD.remove(kSettingsPath);

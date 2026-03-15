@@ -12,12 +12,15 @@ enum class TriggerSourceType : uint8_t {
   StreamPath,
   RamData,
   PanicAll,
+  StopLoopingVoicesForGroup,
+  SetLoopEnabledForGroup,
 };
 
 struct TriggerEvent {
   TriggerSourceType source = TriggerSourceType::StreamPath;
   uint8_t volume = 100;
   int16_t retriggerGroupId = -1;
+  bool loopEnabled = false;
   char path[128] = {0};
 
   const uint8_t *ramData = nullptr;
@@ -37,6 +40,8 @@ class TriggerEngine {
              QueueHandle_t uiStatusQueue = nullptr);
   bool enqueue(const TriggerEvent &event);
   bool panicAll();
+  bool stopLoopingVoicesForGroup(int16_t retriggerGroupId);
+  bool setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled);
   bool waitForIdle(uint32_t timeoutMs) const;
 
  private:

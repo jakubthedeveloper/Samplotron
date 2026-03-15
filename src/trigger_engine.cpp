@@ -46,6 +46,23 @@ bool TriggerEngine::panicAll() {
   return enqueue(event);
 }
 
+bool TriggerEngine::stopLoopingVoicesForGroup(int16_t retriggerGroupId) {
+  if (retriggerGroupId < 0) return false;
+  TriggerEvent event;
+  event.source = TriggerSourceType::StopLoopingVoicesForGroup;
+  event.retriggerGroupId = retriggerGroupId;
+  return enqueue(event);
+}
+
+bool TriggerEngine::setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled) {
+  if (retriggerGroupId < 0) return false;
+  TriggerEvent event;
+  event.source = TriggerSourceType::SetLoopEnabledForGroup;
+  event.retriggerGroupId = retriggerGroupId;
+  event.loopEnabled = loopEnabled;
+  return enqueue(event);
+}
+
 bool TriggerEngine::waitForIdle(uint32_t timeoutMs) const {
   const uint32_t deadline = millis() + timeoutMs;
   while (millis() < deadline) {
@@ -117,6 +134,16 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
     return;
   }
 
+  if (event.source == TriggerSourceType::StopLoopingVoicesForGroup) {
+    audio_->stopLoopingVoicesForGroup(event.retriggerGroupId);
+    return;
+  }
+
+  if (event.source == TriggerSourceType::SetLoopEnabledForGroup) {
+    audio_->setLoopEnabledForGroup(event.retriggerGroupId, event.loopEnabled);
+    return;
+  }
+
   if (event.source == TriggerSourceType::RamData) {
     if (event.ramData && event.ramDataBytes > 0) {
       audio_->playSampleRam(event.ramData,
@@ -125,12 +152,13 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
                             event.sampleRate,
                             event.bitsPerSample,
                             event.volume,
-                            event.retriggerGroupId);
+                            event.retriggerGroupId,
+                            event.loopEnabled);
     }
     return;
   }
 
   if (event.path[0] != '\0') {
-    audio_->playSamplePath(String(event.path), event.volume, event.retriggerGroupId);
+    audio_->playSamplePath(String(event.path), event.volume, event.retriggerGroupId, event.loopEnabled);
   }
 }

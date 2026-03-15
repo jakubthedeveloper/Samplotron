@@ -6,6 +6,11 @@ class Ui {
  public:
   static constexpr int kMaxSamples = 32;
 
+  enum class PlaybackMode : uint8_t {
+    OneShot,
+    Loop,
+  };
+
   enum class State : uint8_t {
     Main,
     Library,
@@ -31,7 +36,7 @@ class Ui {
     State state = State::Main;
     bool dirty = true;
 
-    int mainSelection = 0;  // 0:LIB 1:VOL 2:SAVE
+    int mainSelection = 0;  // 0:LIB 1:VOL 2:SHOT/LOOP 3:SAVE
     int currentSampleIndex = -1;
     int sampleCount = 0;
 
@@ -40,6 +45,7 @@ class Ui {
     int lastMidiNote = -1;
 
     int currentVolume = 0;
+    PlaybackMode playbackMode = PlaybackMode::OneShot;
 
     int libraryWindowStart = 0;
     int assignedNoteForSelectedSample = -1;
@@ -54,10 +60,14 @@ class Ui {
 
   using OnPreviewSampleCallback = void (*)(int sampleIndex, void *context);
   using OnSaveCallback = bool (*)(void *context);
+  using OnPlaybackModeChangedCallback = void (*)(PlaybackMode mode,
+                                                 int sampleIndex,
+                                                 void *context);
 
   void begin(const String *sampleNames, const String *samplePaths, int sampleCount);
   void setPreviewCallback(OnPreviewSampleCallback callback, void *context);
   void setSaveCallback(OnSaveCallback callback, void *context);
+  void setPlaybackModeChangedCallback(OnPlaybackModeChangedCallback callback, void *context);
   void handleEvent(const Event &event);
   void update();
   bool consumeDirty();
@@ -72,12 +82,14 @@ class Ui {
   int panicMidiNote() const;
   bool setSampleVolume(int sampleIndex, int volume);
   int sampleVolumeForSample(int sampleIndex) const;
+  bool setSamplePlaybackMode(int sampleIndex, PlaybackMode mode);
+  PlaybackMode playbackModeForSample(int sampleIndex) const;
+  bool sampleLoopPlaybackEnabled(int sampleIndex) const;
   void reportTriggeredSample(int sampleIndex);
   void clearTriggeredSample();
   void clearUnsavedChanges();
 
  private:
-  static constexpr int kMenuItems = 3;
   static constexpr int kVolumeMin = 0;
   static constexpr int kVolumeMax = 100;
   static constexpr int kVolumeStep = 5;
@@ -110,6 +122,7 @@ class Ui {
   int sampleVolumes_[kMaxSamples] = {0};
   int sampleForMidiNote_[128] = {0};  // -1 means unassigned.
   int panicMidiNote_ = -1;
+  PlaybackMode samplePlaybackModes_[kMaxSamples] = {PlaybackMode::OneShot};
   bool libraryAssignsPanic_ = false;
   bool assigningPanic_ = false;
 
@@ -128,4 +141,6 @@ class Ui {
   void *previewContext_ = nullptr;
   OnSaveCallback onSave_ = nullptr;
   void *saveContext_ = nullptr;
+  OnPlaybackModeChangedCallback onPlaybackModeChanged_ = nullptr;
+  void *playbackModeChangedContext_ = nullptr;
 };

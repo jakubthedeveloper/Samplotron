@@ -26,6 +26,7 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   event.source = TriggerSourceType::StreamPath;
   event.volume = static_cast<uint8_t>(ui_->sampleVolumeForSample(sampleIndex));
   event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
+  event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
   const String &path = catalog_->paths[sampleIndex];
   path.toCharArray(event.path, sizeof(event.path));
 
@@ -79,6 +80,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
       event.source = TriggerSourceType::RamData;
       event.volume = assignedVolume;
       event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
+      event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
       event.ramData = loadedData.data;
       event.ramDataBytes = loadedData.dataBytes;
       event.channelCount = classified->channelCount;
@@ -119,8 +121,24 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   event.source = TriggerSourceType::StreamPath;
   event.volume = assignedVolume;
   event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
+  event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
   assignedPath.toCharArray(event.path, sizeof(event.path));
   if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
     Serial.println("Trigger queue full (assigned trigger dropped)");
+  }
+}
+
+void SamplerPlaybackRouter::onPlaybackModeChanged(Ui::PlaybackMode mode, int sampleIndex) const {
+  if (!triggerEngine_) return;
+  if (sampleIndex < 0) return;
+  const int16_t groupId = static_cast<int16_t>(sampleIndex);
+  if (mode == Ui::PlaybackMode::Loop) {
+    if (!triggerEngine_->setLoopEnabledForGroup(groupId, true) && DebugFlags::kEnableDebugLogs) {
+      Serial.println("Trigger queue full (loop enable for sample dropped)");
+    }
+    return;
+  }
+  if (!triggerEngine_->stopLoopingVoicesForGroup(groupId) && DebugFlags::kEnableDebugLogs) {
+    Serial.println("Trigger queue full (loop stop for sample dropped)");
   }
 }

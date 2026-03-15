@@ -190,6 +190,12 @@ float voiceGainFromVolume(uint8_t volume) {
 // Keep disabled by default to preserve percussive transients.
 constexpr uint32_t kVoiceFadeInUs = 0;
 
+enum class VoiceSourceType : uint8_t {
+  None,
+  StreamPath,
+  RamData,
+};
+
 }  // namespace
 
 struct Audio::Impl {
@@ -204,6 +210,15 @@ struct Audio::Impl {
     AudioOutputMixerStub *stub = nullptr;
     float targetGain = 0.0f;
     float currentGain = 0.0f;
+    uint8_t volume = 100;
+    bool loopEnabled = false;
+    VoiceSourceType sourceType = VoiceSourceType::None;
+    char path[128] = {0};
+    const uint8_t *ramData = nullptr;
+    uint32_t ramDataBytes = 0;
+    uint16_t channelCount = 0;
+    uint32_t sampleRate = 0;
+    uint16_t bitsPerSample = 0;
   };
 
   StableAudioOutputI2S *out = nullptr;
@@ -243,6 +258,15 @@ void stopVoice(Audio::Impl::Voice &voice) {
   voice.retriggerGroupId = -1;
   voice.targetGain = 0.0f;
   voice.currentGain = 0.0f;
+  voice.volume = 100;
+  voice.loopEnabled = false;
+  voice.sourceType = VoiceSourceType::None;
+  voice.path[0] = '\0';
+  voice.ramData = nullptr;
+  voice.ramDataBytes = 0;
+  voice.channelCount = 0;
+  voice.sampleRate = 0;
+  voice.bitsPerSample = 0;
 }
 
 void refreshStats(Audio::Impl *impl) {
@@ -378,7 +402,8 @@ bool beginVoiceFromPath(Audio::Impl *impl,
                         int voiceIndex,
                         const String &samplePath,
                         uint8_t volume,
-                        int16_t retriggerGroupId) {
+                        int16_t retriggerGroupId,
+                        bool loopEnabled) {
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   Audio::Impl::Voice &voice = impl->voices[voiceIndex];
@@ -407,6 +432,15 @@ bool beginVoiceFromPath(Audio::Impl *impl,
     impl->nextStartOrder = 1;
   }
   voice.active = true;
+  voice.volume = volume;
+  voice.loopEnabled = loopEnabled;
+  voice.sourceType = VoiceSourceType::StreamPath;
+  samplePath.toCharArray(voice.path, sizeof(voice.path));
+  voice.ramData = nullptr;
+  voice.ramDataBytes = 0;
+  voice.channelCount = 0;
+  voice.sampleRate = 0;
+  voice.bitsPerSample = 0;
   voice.retriggerGroupId = retriggerGroupId;
   return true;
 }
@@ -419,7 +453,8 @@ bool beginVoiceFromRam(Audio::Impl *impl,
                        uint32_t sampleRate,
                        uint16_t bitsPerSample,
                        uint8_t volume,
-                       int16_t retriggerGroupId) {
+                       int16_t retriggerGroupId,
+                       bool loopEnabled) {
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   Audio::Impl::Voice &voice = impl->voices[voiceIndex];
@@ -445,8 +480,54 @@ bool beginVoiceFromRam(Audio::Impl *impl,
     impl->nextStartOrder = 1;
   }
   voice.active = true;
+  voice.volume = volume;
+  voice.loopEnabled = loopEnabled;
+  voice.sourceType = VoiceSourceType::RamData;
+  voice.path[0] = '\0';
+  voice.ramData = pcmData;
+  voice.ramDataBytes = dataBytes;
+  voice.channelCount = channelCount;
+  voice.sampleRate = sampleRate;
+  voice.bitsPerSample = bitsPerSample;
   voice.retriggerGroupId = retriggerGroupId;
   return true;
+}
+
+bool restartVoiceLoop(Audio::Impl *impl, int voiceIndex) {
+  if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
+
+  const Audio::Impl::Voice &voice = impl->voices[voiceIndex];
+  if (!voice.loopEnabled) return false;
+
+  const VoiceSourceType sourceType = voice.sourceType;
+  const String path(voice.path);
+  const uint8_t volume = voice.volume;
+  const int16_t retriggerGroupId = voice.retriggerGroupId;
+  const bool loopEnabled = voice.loopEnabled;
+  const uint8_t *ramData = voice.ramData;
+  const uint32_t ramDataBytes = voice.ramDataBytes;
+  const uint16_t channelCount = voice.channelCount;
+  const uint32_t sampleRate = voice.sampleRate;
+  const uint16_t bitsPerSample = voice.bitsPerSample;
+
+  stopVoice(impl->voices[voiceIndex]);
+
+  if (sourceType == VoiceSourceType::StreamPath && path.length() > 0) {
+    return beginVoiceFromPath(impl, voiceIndex, path, volume, retriggerGroupId, loopEnabled);
+  }
+  if (sourceType == VoiceSourceType::RamData && ramData && ramDataBytes > 0) {
+    return beginVoiceFromRam(impl,
+                             voiceIndex,
+                             ramData,
+                             ramDataBytes,
+                             channelCount,
+                             sampleRate,
+                             bitsPerSample,
+                             volume,
+                             retriggerGroupId,
+                             loopEnabled);
+  }
+  return false;
 }
 
 }  // namespace
@@ -566,8 +647,10 @@ void Audio::update() {
     updateVoiceFadeIn(voice, nowUs);
 
     if (!voice.wav->loop()) {
-      stopVoice(voice);
-      stateChanged = true;
+      if (!voice.loopEnabled || !restartVoiceLoop(impl_, i)) {
+        stopVoice(voice);
+        stateChanged = true;
+      }
     }
   }
 
@@ -581,7 +664,10 @@ void Audio::update() {
   maybeLogRuntimeDiagnostics(impl_);
 }
 
-void Audio::playSamplePath(const String &samplePath, uint8_t volume, int16_t retriggerGroupId) {
+void Audio::playSamplePath(const String &samplePath,
+                           uint8_t volume,
+                           int16_t retriggerGroupId,
+                           bool loopEnabled) {
   if (!impl_ || samplePath.length() == 0) return;
   const uint32_t playStartUs = micros();
 
@@ -601,7 +687,7 @@ void Audio::playSamplePath(const String &samplePath, uint8_t volume, int16_t ret
   }
 
   stopVoice(voice);
-  if (!beginVoiceFromPath(impl_, voiceIndex, samplePath, volume, retriggerGroupId)) {
+  if (!beginVoiceFromPath(impl_, voiceIndex, samplePath, volume, retriggerGroupId, loopEnabled)) {
     Serial.println("Sample open/start failed");
     refreshStats(impl_);
     recordPlayCost(impl_, micros() - playStartUs);
@@ -620,13 +706,39 @@ void Audio::stopAllVoices() {
   refreshStats(impl_);
 }
 
+void Audio::stopLoopingVoicesForGroup(int16_t retriggerGroupId) {
+  if (!impl_ || retriggerGroupId < 0) return;
+  bool changed = false;
+  for (int i = 0; i < kVoiceCount; i++) {
+    Impl::Voice &voice = impl_->voices[i];
+    if (!voice.active || !voice.loopEnabled) continue;
+    if (voice.retriggerGroupId != retriggerGroupId) continue;
+    stopVoice(voice);
+    changed = true;
+  }
+  if (changed) {
+    refreshStats(impl_);
+  }
+}
+
+void Audio::setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled) {
+  if (!impl_ || retriggerGroupId < 0) return;
+  for (int i = 0; i < kVoiceCount; i++) {
+    Impl::Voice &voice = impl_->voices[i];
+    if (!voice.active) continue;
+    if (voice.retriggerGroupId != retriggerGroupId) continue;
+    voice.loopEnabled = loopEnabled;
+  }
+}
+
 bool Audio::playSampleRam(const uint8_t *pcmData,
                           uint32_t dataBytes,
                           uint16_t channelCount,
                           uint32_t sampleRate,
                           uint16_t bitsPerSample,
                           uint8_t volume,
-                          int16_t retriggerGroupId) {
+                          int16_t retriggerGroupId,
+                          bool loopEnabled) {
   if (!impl_ || !pcmData || dataBytes == 0) return false;
   const uint32_t playStartUs = micros();
 
@@ -653,7 +765,8 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                                          sampleRate,
                                          bitsPerSample,
                                          volume,
-                                         retriggerGroupId);
+                                         retriggerGroupId,
+                                         loopEnabled);
   refreshStats(impl_);
   recordPlayCost(impl_, micros() - playStartUs);
   return started;

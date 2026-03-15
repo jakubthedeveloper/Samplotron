@@ -19,6 +19,7 @@ void SamplerCallbackBinder::bindUiAndMidiCallbacks() {
 
   ui_->setPreviewCallback(onPreviewSample, this);
   ui_->setSaveCallback(onSaveConfiguration, this);
+  ui_->setPlaybackModeChangedCallback(onPlaybackModeChanged, this);
   midi_->setAssignedNoteOnCallback(onAssignedMidiNoteOn, this);
 }
 
@@ -56,4 +57,14 @@ bool SamplerCallbackBinder::onSaveConfiguration(void *context) {
     return false;
   }
   return self->saveService_->saveConfiguration();
+}
+
+void SamplerCallbackBinder::onPlaybackModeChanged(Ui::PlaybackMode mode,
+                                                  int sampleIndex,
+                                                  void *context) {
+  auto *self = static_cast<SamplerCallbackBinder *>(context);
+  if (!self || !self->playbackRouter_) {
+    return;
+  }
+  self->playbackRouter_->onPlaybackModeChanged(mode, sampleIndex);
 }

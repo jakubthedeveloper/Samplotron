@@ -14,6 +14,7 @@ class SamplerPlaybackRouter {
 
   void onPreviewSample(int sampleIndex) const;
   void onAssignedMidiNoteOn(int midiNote) const;
+  void onPlaybackModeChanged(Ui::PlaybackMode mode, int sampleIndex) const;
 
  private:
   Ui *ui_ = nullptr;

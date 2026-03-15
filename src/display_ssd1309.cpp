@@ -128,6 +128,8 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   gDisplay.setFont(u8g2_font_5x8_tf);
   const bool hasLastSample = (model.lastTriggeredSampleIndex >= 0);
   const bool showSave = model.hasUnsavedChanges;
+  const char *playbackModeLabel =
+      (model.playbackMode == Ui::PlaybackMode::Loop) ? "LOOP" : "SHOT";
 
   String currentSample = "----";
   if (model.lastTriggeredSampleIndex >= 0) {
@@ -155,17 +157,17 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
 
   const char *kItemsLibOnly[1] = {"LIB"};
   const char *kItemsLibSave[2] = {"LIB", "SAVE"};
-  const char *kItemsLibVol[2] = {"LIB", "VOL"};
-  const char *kItemsLibVolSave[3] = {"LIB", "VOL", "SAVE"};
+  const char *kItemsLibVolShot[3] = {"LIB", "VOL", playbackModeLabel};
+  const char *kItemsLibVolShotSave[4] = {"LIB", "VOL", playbackModeLabel, "SAVE"};
 
   const char **items = nullptr;
   int itemCount = 0;
   if (hasLastSample && showSave) {
-    items = kItemsLibVolSave;
-    itemCount = 3;
+    items = kItemsLibVolShotSave;
+    itemCount = 4;
   } else if (hasLastSample && !showSave) {
-    items = kItemsLibVol;
-    itemCount = 2;
+    items = kItemsLibVolShot;
+    itemCount = 3;
   } else if (!hasLastSample && showSave) {
     items = kItemsLibSave;
     itemCount = 2;

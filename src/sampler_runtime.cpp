@@ -41,6 +41,9 @@ void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &
       applied++;
     }
     ui.setSampleVolume(sampleIndex, assignment.volume);
+    ui.setSamplePlaybackMode(sampleIndex,
+                             assignment.loopPlaybackEnabled ? Ui::PlaybackMode::Loop
+                                                            : Ui::PlaybackMode::OneShot);
   }
   if (DebugFlags::kEnableDebugLogs) {
     Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
@@ -63,6 +66,7 @@ void SamplerRuntime::collectAssignmentsFromUi(const Ui &ui, const SampleLibrary:
     entry.note = static_cast<uint8_t>(note);
     entry.samplePath = catalog.paths[sampleIndex];
     entry.volume = static_cast<uint8_t>(ui.sampleVolumeForSample(sampleIndex));
+    entry.loopPlaybackEnabled = ui.sampleLoopPlaybackEnabled(sampleIndex);
     settings_.assignmentCount++;
   }
 }

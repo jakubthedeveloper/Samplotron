@@ -90,7 +90,8 @@ Minimal format:
     {
       "note": 60,
       "sample_path": "/samples/kick.wav",
-      "volume": 100
+      "volume": 100,
+      "playback_mode": "shot"
     }
   ]
 }
@@ -100,6 +101,7 @@ Notes:
 
 - `note`: `0..127`
 - `panic_note`: optional `0..127`; when received as MIDI NOTE ON, all active voices are stopped immediately
+- `playback_mode`: optional `"shot"` or `"loop"` stored per assignment/sample
 - `volume`: clamped to `0..100`
 - `volume = 100`: full per-voice level (before fixed mixer headroom)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
@@ -149,6 +151,7 @@ UI states:
 Flow:
 
 - in `Library`, you select a sample and trigger preview,
+- in `Main`, `SHOT/LOOP` toggles one-shot vs loop for the currently active sample,
 - `L rotate` in `Library` toggles assignment mode between `Sample` and `Panic`,
 - long-pressing the right button enters `AssignNote` for the current mode,
 - the first received MIDI note assigns either the current sample or the global panic note (depending on selected mode),

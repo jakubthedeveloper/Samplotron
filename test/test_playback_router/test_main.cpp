@@ -23,6 +23,12 @@ struct TriggerStubState {
   std::deque<bool> enqueueResults;
   int panicCalls = 0;
   bool panicResult = true;
+  int stopLoopingCalls = 0;
+  bool stopLoopingResult = true;
+  int setLoopEnabledCalls = 0;
+  bool setLoopEnabledResult = true;
+  int16_t lastSetLoopGroupId = -1;
+  bool lastSetLoopEnabled = false;
 };
 
 struct RuntimeStubState {
@@ -43,6 +49,12 @@ void resetTriggerStub() {
   gTriggerStub.enqueueResults.clear();
   gTriggerStub.panicCalls = 0;
   gTriggerStub.panicResult = true;
+  gTriggerStub.stopLoopingCalls = 0;
+  gTriggerStub.stopLoopingResult = true;
+  gTriggerStub.setLoopEnabledCalls = 0;
+  gTriggerStub.setLoopEnabledResult = true;
+  gTriggerStub.lastSetLoopGroupId = -1;
+  gTriggerStub.lastSetLoopEnabled = false;
 }
 
 void setTriggerEnqueueResults(std::initializer_list<bool> results) {
@@ -107,7 +119,25 @@ void test_preview_enqueues_stream_event_with_ui_volume_and_path() {
   TEST_ASSERT_EQUAL(TriggerSourceType::StreamPath, event.source);
   TEST_ASSERT_EQUAL_UINT8(65, event.volume);
   TEST_ASSERT_EQUAL_INT16(1, event.retriggerGroupId);
+  TEST_ASSERT_FALSE(event.loopEnabled);
   TEST_ASSERT_EQUAL_STRING("/samples/snare.wav", event.path);
+}
+
+void test_preview_enqueues_loop_when_ui_mode_is_loop() {
+  Ui ui = createUi();
+  const SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+
+  TEST_ASSERT_TRUE(ui.setSamplePlaybackMode(0, Ui::PlaybackMode::Loop));
+  resetTriggerStub();
+
+  router.onPreviewSample(0);
+
+  TEST_ASSERT_EQUAL_UINT32(1, gTriggerStub.events.size());
+  TEST_ASSERT_TRUE(gTriggerStub.events[0].loopEnabled);
 }
 
 void test_assigned_note_without_assignment_clears_last_triggered_sample() {
@@ -201,6 +231,7 @@ void test_assigned_note_ram_mode_enqueues_ram_event() {
   TEST_ASSERT_EQUAL(TriggerSourceType::RamData, event.source);
   TEST_ASSERT_EQUAL_UINT8(88, event.volume);
   TEST_ASSERT_EQUAL_INT16(0, event.retriggerGroupId);
+  TEST_ASSERT_FALSE(event.loopEnabled);
   TEST_ASSERT_EQUAL_PTR(kRamData, event.ramData);
   TEST_ASSERT_EQUAL_UINT32(sizeof(kRamData), event.ramDataBytes);
   TEST_ASSERT_EQUAL_UINT16(1, event.channelCount);
@@ -243,11 +274,43 @@ void test_assigned_note_ram_enqueue_failure_falls_back_to_stream() {
   TEST_ASSERT_EQUAL_UINT32(2, gTriggerStub.events.size());
   TEST_ASSERT_EQUAL(TriggerSourceType::RamData, gTriggerStub.events[0].source);
   TEST_ASSERT_EQUAL_INT16(0, gTriggerStub.events[0].retriggerGroupId);
+  TEST_ASSERT_FALSE(gTriggerStub.events[0].loopEnabled);
   TEST_ASSERT_EQUAL(TriggerSourceType::StreamPath, gTriggerStub.events[1].source);
   TEST_ASSERT_EQUAL_INT16(0, gTriggerStub.events[1].retriggerGroupId);
+  TEST_ASSERT_FALSE(gTriggerStub.events[1].loopEnabled);
   TEST_ASSERT_EQUAL_STRING("/samples/kick.wav", gTriggerStub.events[1].path);
 
   clearRuntimeState(runtime);
+}
+
+void test_playback_mode_change_to_oneshot_stops_looping_voices() {
+  Ui ui = createUi();
+  const SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+
+  router.onPlaybackModeChanged(Ui::PlaybackMode::OneShot, 0);
+
+  TEST_ASSERT_EQUAL_INT(1, gTriggerStub.stopLoopingCalls);
+  TEST_ASSERT_EQUAL_INT(0, gTriggerStub.setLoopEnabledCalls);
+}
+
+void test_playback_mode_change_to_loop_does_not_stop_voices() {
+  Ui ui = createUi();
+  const SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+
+  router.onPlaybackModeChanged(Ui::PlaybackMode::Loop, 0);
+
+  TEST_ASSERT_EQUAL_INT(0, gTriggerStub.stopLoopingCalls);
+  TEST_ASSERT_EQUAL_INT(1, gTriggerStub.setLoopEnabledCalls);
+  TEST_ASSERT_EQUAL_INT16(0, gTriggerStub.lastSetLoopGroupId);
+  TEST_ASSERT_TRUE(gTriggerStub.lastSetLoopEnabled);
 }
 
 }  // namespace
@@ -283,6 +346,19 @@ bool TriggerEngine::enqueue(const TriggerEvent &event) {
 bool TriggerEngine::panicAll() {
   gTriggerStub.panicCalls++;
   return gTriggerStub.panicResult;
+}
+
+bool TriggerEngine::stopLoopingVoicesForGroup(int16_t retriggerGroupId) {
+  (void)retriggerGroupId;
+  gTriggerStub.stopLoopingCalls++;
+  return gTriggerStub.stopLoopingResult;
+}
+
+bool TriggerEngine::setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled) {
+  gTriggerStub.setLoopEnabledCalls++;
+  gTriggerStub.lastSetLoopGroupId = retriggerGroupId;
+  gTriggerStub.lastSetLoopEnabled = loopEnabled;
+  return gTriggerStub.setLoopEnabledResult;
 }
 
 bool TriggerEngine::waitForIdle(uint32_t) const {
@@ -350,10 +426,13 @@ bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data) {
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_preview_enqueues_stream_event_with_ui_volume_and_path);
+  RUN_TEST(test_preview_enqueues_loop_when_ui_mode_is_loop);
   RUN_TEST(test_assigned_note_without_assignment_clears_last_triggered_sample);
   RUN_TEST(test_panic_note_calls_trigger_engine_panic_and_skips_playback);
   RUN_TEST(test_assigned_note_unavailable_does_not_enqueue);
   RUN_TEST(test_assigned_note_ram_mode_enqueues_ram_event);
   RUN_TEST(test_assigned_note_ram_enqueue_failure_falls_back_to_stream);
+  RUN_TEST(test_playback_mode_change_to_oneshot_stops_looping_voices);
+  RUN_TEST(test_playback_mode_change_to_loop_does_not_stop_voices);
   return UNITY_END();
 }

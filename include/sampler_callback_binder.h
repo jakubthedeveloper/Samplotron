@@ -20,6 +20,7 @@ class SamplerCallbackBinder {
   static void onPreviewSample(int sampleIndex, void *context);
   static void onAssignedMidiNoteOn(int midiNote, void *context);
   static bool onSaveConfiguration(void *context);
+  static void onPlaybackModeChanged(Ui::PlaybackMode mode, int sampleIndex, void *context);
 
   Ui *ui_ = nullptr;
   Midi *midi_ = nullptr;

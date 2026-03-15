@@ -6,7 +6,8 @@ namespace {
 
 constexpr int kMainLib = 0;
 constexpr int kMainVol = 1;
-constexpr int kMainSave = 2;
+constexpr int kMainPlaybackMode = 2;
+constexpr int kMainSave = 3;
 constexpr int kLibraryWindowSize = 3;
 
 int clampValue(int value, int minValue, int maxValue) {
@@ -17,7 +18,7 @@ int clampValue(int value, int minValue, int maxValue) {
 
 int mainMenuItemsCount(bool hasLastSample, bool hasUnsavedChanges) {
   int count = 1;  // LIB
-  if (hasLastSample) count++;
+  if (hasLastSample) count += 2;  // VOL + SHOT/LOOP
   if (hasUnsavedChanges) count++;
   return count;
 }
@@ -27,6 +28,8 @@ int logicalMainItemForSelection(int selection, bool hasLastSample, bool hasUnsav
   int cursor = 1;
   if (hasLastSample) {
     if (selection == cursor) return kMainVol;
+    cursor++;
+    if (selection == cursor) return kMainPlaybackMode;
     cursor++;
   }
   if (hasUnsavedChanges && selection == cursor) return kMainSave;
@@ -45,6 +48,9 @@ void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleC
   }
   for (int i = sampleCount_; i < kMaxSamples; i++) {
     sampleVolumes_[i] = 0;
+  }
+  for (int i = 0; i < kMaxSamples; i++) {
+    samplePlaybackModes_[i] = PlaybackMode::OneShot;
   }
   for (int i = 0; i < 128; i++) {
     sampleForMidiNote_[i] = -1;
@@ -79,6 +85,11 @@ void Ui::setPreviewCallback(OnPreviewSampleCallback callback, void *context) {
 void Ui::setSaveCallback(OnSaveCallback callback, void *context) {
   onSave_ = callback;
   saveContext_ = context;
+}
+
+void Ui::setPlaybackModeChangedCallback(OnPlaybackModeChangedCallback callback, void *context) {
+  onPlaybackModeChanged_ = callback;
+  playbackModeChangedContext_ = context;
 }
 
 void Ui::handleEvent(const Event &event) {
@@ -245,6 +256,27 @@ int Ui::sampleVolumeForSample(int sampleIndex) const {
   return sampleVolumes_[sampleIndex];
 }
 
+bool Ui::setSamplePlaybackMode(int sampleIndex, PlaybackMode mode) {
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return false;
+  if (samplePlaybackModes_[sampleIndex] == mode) return true;
+  samplePlaybackModes_[sampleIndex] = mode;
+  hasUnsavedChanges_ = true;
+  markDirty();
+  if (onPlaybackModeChanged_) {
+    onPlaybackModeChanged_(mode, sampleIndex, playbackModeChangedContext_);
+  }
+  return true;
+}
+
+Ui::PlaybackMode Ui::playbackModeForSample(int sampleIndex) const {
+  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return PlaybackMode::OneShot;
+  return samplePlaybackModes_[sampleIndex];
+}
+
+bool Ui::sampleLoopPlaybackEnabled(int sampleIndex) const {
+  return playbackModeForSample(sampleIndex) == PlaybackMode::Loop;
+}
+
 void Ui::markDirty() {
   updateDerivedModel();
   model_.dirty = true;
@@ -273,6 +305,8 @@ void Ui::updateDerivedModel() {
   model_.lastSaveSucceeded = lastSaveSucceeded_;
   model_.hasUnsavedChanges = hasUnsavedChanges_;
   model_.midiPulseActive = (midiPulseUntilMs_ != 0);
+  model_.playbackMode = hasLastSample ? samplePlaybackModes_[lastTriggeredSampleIndex_]
+                                      : PlaybackMode::OneShot;
   if (hasLastSample) {
     model_.currentVolume = sampleVolumes_[lastTriggeredSampleIndex_];
   } else {
@@ -293,8 +327,8 @@ void Ui::handleMainEvent(const Event &event) {
       markDirty();
       return;
     case EventType::RightRotate:
-      if (!hasLastSample) return;
       if (logicalSelected == kMainVol) {
+        if (!hasLastSample) return;
         const int previous = sampleVolumes_[lastTriggeredSampleIndex_];
         sampleVolumes_[lastTriggeredSampleIndex_] =
             clampValue(sampleVolumes_[lastTriggeredSampleIndex_] + (event.value * kVolumeStep),
@@ -304,11 +338,21 @@ void Ui::handleMainEvent(const Event &event) {
           hasUnsavedChanges_ = true;
         }
         markDirty();
+      } else if (hasLastSample && logicalSelected == kMainPlaybackMode && event.value != 0) {
+        const PlaybackMode mode = samplePlaybackModes_[lastTriggeredSampleIndex_];
+        setSamplePlaybackMode(lastTriggeredSampleIndex_,
+                              mode == PlaybackMode::Loop ? PlaybackMode::OneShot
+                                                         : PlaybackMode::Loop);
       }
       return;
     case EventType::RightClick:
       if (logicalSelected == kMainLib) {
         transitionTo(State::Library);
+      } else if (hasLastSample && logicalSelected == kMainPlaybackMode) {
+        const PlaybackMode mode = samplePlaybackModes_[lastTriggeredSampleIndex_];
+        setSamplePlaybackMode(lastTriggeredSampleIndex_,
+                              mode == PlaybackMode::Loop ? PlaybackMode::OneShot
+                                                         : PlaybackMode::Loop);
       } else if (logicalSelected == kMainSave) {
         transitionTo(State::Saving);
       }

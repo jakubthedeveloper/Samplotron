@@ -20,15 +20,21 @@ class Audio {
 
   void begin();
   void update();
-  void playSamplePath(const String &samplePath, uint8_t volume = 100, int16_t retriggerGroupId = -1);
+  void playSamplePath(const String &samplePath,
+                      uint8_t volume = 100,
+                      int16_t retriggerGroupId = -1,
+                      bool loopEnabled = false);
   void stopAllVoices();
+  void stopLoopingVoicesForGroup(int16_t retriggerGroupId);
+  void setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled);
   bool playSampleRam(const uint8_t *pcmData,
                      uint32_t dataBytes,
                      uint16_t channelCount,
                      uint32_t sampleRate,
                      uint16_t bitsPerSample,
                      uint8_t volume = 100,
-                     int16_t retriggerGroupId = -1);
+                     int16_t retriggerGroupId = -1,
+                     bool loopEnabled = false);
   RuntimeStats runtimeStats() const;
   uint32_t voiceStealCount() const;
 

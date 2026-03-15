@@ -128,14 +128,53 @@ void test_library_right_rotate_is_ignored_in_panic_mode() {
   TEST_ASSERT_EQUAL_INT(1, ui.model().currentSampleIndex);
 }
 
+void test_main_menu_hides_vol_and_shot_without_last_sample() {
+  Ui ui = createUi();
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 1});
+  TEST_ASSERT_EQUAL_INT(0, ui.model().mainSelection);
+
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  TEST_ASSERT_EQUAL(Ui::State::Library, ui.model().state);
+}
+
+void test_main_menu_shot_loop_toggle_marks_unsaved_changes() {
+  Ui ui = createUi();
+  ui.reportTriggeredSample(0);
+
+  TEST_ASSERT_EQUAL(Ui::PlaybackMode::OneShot, ui.playbackModeForSample(0));
+  TEST_ASSERT_FALSE(ui.model().hasUnsavedChanges);
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 2});  // LIB -> VOL -> SHOT/LOOP
+  TEST_ASSERT_EQUAL_INT(2, ui.model().mainSelection);
+
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  TEST_ASSERT_EQUAL(Ui::PlaybackMode::Loop, ui.playbackModeForSample(0));
+  TEST_ASSERT_TRUE(ui.model().hasUnsavedChanges);
+
+  ui.handleEvent({Ui::EventType::RightRotate, 1});
+  TEST_ASSERT_EQUAL(Ui::PlaybackMode::OneShot, ui.playbackModeForSample(0));
+}
+
+void test_main_menu_hides_vol_and_shot_after_last_sample_clear() {
+  Ui ui = createUi();
+  ui.reportTriggeredSample(0);
+
+  ui.handleEvent({Ui::EventType::LeftRotate, 2});  // SHOT/LOOP
+  TEST_ASSERT_EQUAL_INT(2, ui.model().mainSelection);
+
+  ui.clearTriggeredSample();
+  TEST_ASSERT_EQUAL_INT(0, ui.model().mainSelection);
+}
+
 void test_save_flow_executes_callback_and_clears_unsaved_changes_after_delay() {
   Ui ui = createUi();
 
   TEST_ASSERT_TRUE(ui.setSampleVolume(0, 70));
   ui.reportTriggeredSample(0);
 
-  ui.handleEvent({Ui::EventType::LeftRotate, 2});
-  TEST_ASSERT_EQUAL_INT(2, ui.model().mainSelection);
+  ui.handleEvent({Ui::EventType::LeftRotate, 3});
+  TEST_ASSERT_EQUAL_INT(3, ui.model().mainSelection);
 
   ui.handleEvent({Ui::EventType::RightClick, 0});
   TEST_ASSERT_EQUAL(Ui::State::Saving, ui.model().state);
@@ -179,6 +218,9 @@ int main() {
   RUN_TEST(test_library_left_rotate_toggles_panic_assign_mode);
   RUN_TEST(test_assign_panic_note_from_library_mode);
   RUN_TEST(test_library_right_rotate_is_ignored_in_panic_mode);
+  RUN_TEST(test_main_menu_hides_vol_and_shot_without_last_sample);
+  RUN_TEST(test_main_menu_shot_loop_toggle_marks_unsaved_changes);
+  RUN_TEST(test_main_menu_hides_vol_and_shot_after_last_sample_clear);
   RUN_TEST(test_save_flow_executes_callback_and_clears_unsaved_changes_after_delay);
   return UNITY_END();
 }
