@@ -3,6 +3,11 @@
 namespace {
 
 constexpr TickType_t kIdleWaitTick = pdMS_TO_TICKS(1);
+constexpr size_t kQueueFilterCapacity = 32;
+
+bool isPlaybackEvent(const TriggerEvent &event) {
+  return event.source == TriggerSourceType::StreamPath || event.source == TriggerSourceType::RamData;
+}
 
 }  // namespace
 
@@ -37,6 +42,24 @@ bool TriggerEngine::begin(Audio *audio,
 
 bool TriggerEngine::enqueue(const TriggerEvent &event) {
   if (!triggerQueue_) return false;
+
+  if (event.isPreview) {
+    // Keep control events, drop stale playback events, then prioritize newest preview.
+    TriggerEvent preserved[kQueueFilterCapacity];
+    size_t preservedCount = 0;
+    TriggerEvent queued;
+    while (xQueueReceive(triggerQueue_, &queued, 0) == pdTRUE) {
+      if (isPlaybackEvent(queued)) continue;
+      if (preservedCount < kQueueFilterCapacity) {
+        preserved[preservedCount++] = queued;
+      }
+    }
+    for (size_t i = 0; i < preservedCount; i++) {
+      xQueueSend(triggerQueue_, &preserved[i], 0);
+    }
+    return xQueueSendToFront(triggerQueue_, &event, 0) == pdTRUE;
+  }
+
   return xQueueSend(triggerQueue_, &event, 0) == pdTRUE;
 }
 
@@ -130,6 +153,10 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
   if (!audio_) return;
 
   if (event.source == TriggerSourceType::PanicAll) {
+    if (triggerQueue_) {
+      // Panic semantics: stop immediately and clear pending trigger backlog.
+      xQueueReset(triggerQueue_);
+    }
     audio_->stopAllVoices();
     return;
   }

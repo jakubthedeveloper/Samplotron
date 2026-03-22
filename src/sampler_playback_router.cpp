@@ -24,6 +24,7 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
 
   TriggerEvent event;
   event.source = TriggerSourceType::StreamPath;
+  event.isPreview = true;
   event.volume = static_cast<uint8_t>(ui_->sampleVolumeForSample(sampleIndex));
   event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
   event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);

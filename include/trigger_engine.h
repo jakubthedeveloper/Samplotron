@@ -18,6 +18,7 @@ enum class TriggerSourceType : uint8_t {
 
 struct TriggerEvent {
   TriggerSourceType source = TriggerSourceType::StreamPath;
+  bool isPreview = false;
   uint8_t volume = 100;
   int16_t retriggerGroupId = -1;
   bool loopEnabled = false;
