@@ -10,6 +10,8 @@
 namespace {
 
 constexpr const char *kSettingsPath = "/sampler_config.json";
+constexpr const char *kSettingsBackupPath = "/sampler_config.bak.json";
+constexpr const char *kSettingsTempPath = "/sampler_config.tmp.json";
 constexpr const char *kCurrentVersion = "1.0";
 constexpr size_t kSettingsJsonCapacity = 12288;
 StaticJsonDocument<kSettingsJsonCapacity> gSettingsJsonDoc;
@@ -48,6 +50,36 @@ void ensureParentDirectoryExists(const char *path) {
   const String dirPath = filePath.substring(0, slash);
   if (dirPath.length() == 0 || SD.exists(dirPath)) return;
   SD.mkdir(dirPath);
+}
+
+bool writeJsonToPath(const char *path, const JsonDocument &doc) {
+  SD.remove(path);
+  File file = SD.open(path, FILE_WRITE);
+  if (!file) {
+    return false;
+  }
+
+  if (serializeJsonPretty(doc, file) == 0) {
+    file.close();
+    return false;
+  }
+
+  file.println();
+  file.flush();
+  file.close();
+  return true;
+}
+
+bool verifyJsonAtPath(const char *path) {
+  File file = SD.open(path, FILE_READ);
+  if (!file) {
+    return false;
+  }
+
+  gSettingsJsonDoc.clear();
+  const DeserializationError error = deserializeJson(gSettingsJsonDoc, file);
+  file.close();
+  return !error;
 }
 
 }  // namespace
@@ -134,6 +166,8 @@ bool loadFromSd(SamplerSettings &settings) {
 
 bool saveToSd(const SamplerSettings &settings) {
   ensureParentDirectoryExists(kSettingsPath);
+  ensureParentDirectoryExists(kSettingsBackupPath);
+  ensureParentDirectoryExists(kSettingsTempPath);
 
   gSettingsJsonDoc.clear();
   gSettingsJsonDoc["version"] =
@@ -159,21 +193,39 @@ bool saveToSd(const SamplerSettings &settings) {
     entry["playback_mode"] = assignment.loopPlaybackEnabled ? "loop" : "shot";
   }
 
-  SD.remove(kSettingsPath);
-  File file = SD.open(kSettingsPath, FILE_WRITE);
-  if (!file) {
-    Serial.printf("Failed to open settings for write (%s)\n", kSettingsPath);
+  if (!writeJsonToPath(kSettingsTempPath, gSettingsJsonDoc)) {
+    Serial.printf("Failed to write temporary settings file (%s)\n", kSettingsTempPath);
     return false;
   }
 
-  if (serializeJsonPretty(gSettingsJsonDoc, file) == 0) {
-    Serial.println("Failed to serialize settings JSON");
-    file.close();
+  if (!verifyJsonAtPath(kSettingsTempPath)) {
+    Serial.printf("Temporary settings verification failed (%s)\n", kSettingsTempPath);
+    SD.remove(kSettingsTempPath);
     return false;
   }
 
-  file.println();
-  file.close();
+  if (SD.exists(kSettingsPath)) {
+    SD.remove(kSettingsBackupPath);
+    if (!SD.rename(kSettingsPath, kSettingsBackupPath)) {
+      Serial.printf("Failed to create settings backup (%s -> %s)\n",
+                    kSettingsPath,
+                    kSettingsBackupPath);
+      SD.remove(kSettingsTempPath);
+      return false;
+    }
+  }
+
+  if (!SD.rename(kSettingsTempPath, kSettingsPath)) {
+    Serial.printf("Failed to activate temporary settings file (%s -> %s)\n",
+                  kSettingsTempPath,
+                  kSettingsPath);
+    if (SD.exists(kSettingsBackupPath)) {
+      SD.rename(kSettingsBackupPath, kSettingsPath);
+    }
+    SD.remove(kSettingsTempPath);
+    return false;
+  }
+
   return true;
 }
 
