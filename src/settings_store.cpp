@@ -91,6 +91,7 @@ void applyDefaults(SamplerSettings &settings) {
   settings.sampleRamBudgetBytes = SamplerSettings::kDefaultSampleRamBudgetBytes;
   settings.panicNote = -1;
   settings.assignmentCount = 0;
+  settings.playbackModeCount = 0;
 }
 
 bool loadFromSd(SamplerSettings &settings) {
@@ -132,33 +133,54 @@ bool loadFromSd(SamplerSettings &settings) {
         parseLoopPlaybackEnabled(globalSettings["playback_mode"], defaultLoopPlaybackEnabled);
   }
 
-  JsonArray assignments = gSettingsJsonDoc["midi_assignments"].as<JsonArray>();
-  if (assignments.isNull()) {
-    return true;
+  JsonArray playbackModes = gSettingsJsonDoc["sample_playback_modes"].as<JsonArray>();
+  if (!playbackModes.isNull()) {
+    for (JsonObject modeEntry : playbackModes) {
+      if (settings.playbackModeCount >= SamplerSettings::kMaxPlaybackModes) {
+        Serial.println("Too many sample playback modes in config, truncating");
+        break;
+      }
+
+      const char *pathCStr = modeEntry["sample_path"] | "";
+      const String samplePath(pathCStr);
+      const bool loopPlaybackEnabled =
+          parseLoopPlaybackEnabled(modeEntry["playback_mode"], defaultLoopPlaybackEnabled);
+
+      if (!isNonEmptyPath(samplePath)) {
+        continue;
+      }
+
+      settings.playbackModes[settings.playbackModeCount].samplePath = samplePath;
+      settings.playbackModes[settings.playbackModeCount].loopPlaybackEnabled = loopPlaybackEnabled;
+      settings.playbackModeCount++;
+    }
   }
 
-  for (JsonObject assignment : assignments) {
-    if (settings.assignmentCount >= SamplerSettings::kMaxAssignments) {
-      Serial.println("Too many assignments in config, truncating");
-      break;
+  JsonArray assignments = gSettingsJsonDoc["midi_assignments"].as<JsonArray>();
+  if (!assignments.isNull()) {
+    for (JsonObject assignment : assignments) {
+      if (settings.assignmentCount >= SamplerSettings::kMaxAssignments) {
+        Serial.println("Too many assignments in config, truncating");
+        break;
+      }
+
+      const long note = assignment["note"] | -1;
+      const char *pathCStr = assignment["sample_path"] | "";
+      const long volume = assignment["volume"] | 100;
+      const String samplePath(pathCStr);
+      const bool loopPlaybackEnabled =
+          parseLoopPlaybackEnabled(assignment["playback_mode"], defaultLoopPlaybackEnabled);
+
+      if (!isValidNote(note) || !isNonEmptyPath(samplePath)) {
+        continue;
+      }
+
+      settings.assignments[settings.assignmentCount].note = static_cast<uint8_t>(note);
+      settings.assignments[settings.assignmentCount].samplePath = samplePath;
+      settings.assignments[settings.assignmentCount].volume = clampVolume(volume);
+      settings.assignments[settings.assignmentCount].loopPlaybackEnabled = loopPlaybackEnabled;
+      settings.assignmentCount++;
     }
-
-    const long note = assignment["note"] | -1;
-    const char *pathCStr = assignment["sample_path"] | "";
-    const long volume = assignment["volume"] | 100;
-    const String samplePath(pathCStr);
-    const bool loopPlaybackEnabled =
-        parseLoopPlaybackEnabled(assignment["playback_mode"], defaultLoopPlaybackEnabled);
-
-    if (!isValidNote(note) || !isNonEmptyPath(samplePath)) {
-      continue;
-    }
-
-    settings.assignments[settings.assignmentCount].note = static_cast<uint8_t>(note);
-    settings.assignments[settings.assignmentCount].samplePath = samplePath;
-    settings.assignments[settings.assignmentCount].volume = clampVolume(volume);
-    settings.assignments[settings.assignmentCount].loopPlaybackEnabled = loopPlaybackEnabled;
-    settings.assignmentCount++;
   }
 
   return true;
@@ -177,6 +199,18 @@ bool saveToSd(const SamplerSettings &settings) {
   globalSettings["sample_ram_budget_bytes"] = settings.sampleRamBudgetBytes;
   if (settings.panicNote >= 0 && settings.panicNote <= 127) {
     globalSettings["panic_note"] = settings.panicNote;
+  }
+
+  JsonArray playbackModes = gSettingsJsonDoc.createNestedArray("sample_playback_modes");
+  for (int i = 0; i < settings.playbackModeCount; i++) {
+    const SamplePlaybackMode &mode = settings.playbackModes[i];
+    if (!isNonEmptyPath(mode.samplePath)) {
+      continue;
+    }
+
+    JsonObject modeEntry = playbackModes.createNestedObject();
+    modeEntry["sample_path"] = mode.samplePath;
+    modeEntry["playback_mode"] = mode.loopPlaybackEnabled ? "loop" : "shot";
   }
 
   JsonArray assignments = gSettingsJsonDoc.createNestedArray("midi_assignments");

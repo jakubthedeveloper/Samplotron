@@ -20,8 +20,12 @@ bool SamplerSaveService::saveConfiguration() const {
   }
 
   if (!triggerEngine_->waitForIdle(3000)) {
-    Serial.println("Settings save deferred: audio still active");
-    return false;
+    // Save should be reliable even if a loop is currently active.
+    triggerEngine_->panicAll();
+    if (!triggerEngine_->waitForIdle(1500)) {
+      Serial.println("Settings save deferred: audio still active");
+      return false;
+    }
   }
 
   runtime_->collectAssignmentsFromUi(*ui_, *catalog_);

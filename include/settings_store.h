@@ -12,9 +12,15 @@ struct MidiAssignment {
   bool loopPlaybackEnabled = false;
 };
 
+struct SamplePlaybackMode {
+  String samplePath;
+  bool loopPlaybackEnabled = false;
+};
+
 struct SamplerSettings {
   static constexpr uint32_t kDefaultSampleRamBudgetBytes = 1024UL * 1024UL;
   static constexpr int kMaxAssignments = 128;
+  static constexpr int kMaxPlaybackModes = 128;
 
   String version;
   uint32_t sampleRamBudgetBytes = kDefaultSampleRamBudgetBytes;
@@ -22,6 +28,9 @@ struct SamplerSettings {
 
   int assignmentCount = 0;
   MidiAssignment assignments[kMaxAssignments];
+
+  int playbackModeCount = 0;
+  SamplePlaybackMode playbackModes[kMaxPlaybackModes];
 };
 
 void applyDefaults(SamplerSettings &settings);

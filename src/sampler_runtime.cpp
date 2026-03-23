@@ -25,6 +25,21 @@ void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &
     ui.setPanicMidiNote(settings_.panicNote);
   }
 
+  int playbackModesApplied = 0;
+  int playbackModesMissing = 0;
+  for (int i = 0; i < settings_.playbackModeCount; i++) {
+    const SettingsStore::SamplePlaybackMode &mode = settings_.playbackModes[i];
+    const int sampleIndex = SampleLibrary::findIndexByPath(catalog, mode.samplePath);
+    if (sampleIndex < 0) {
+      playbackModesMissing++;
+      continue;
+    }
+    ui.setSamplePlaybackMode(sampleIndex,
+                             mode.loopPlaybackEnabled ? Ui::PlaybackMode::Loop
+                                                      : Ui::PlaybackMode::OneShot);
+    playbackModesApplied++;
+  }
+
   int applied = 0;
   int missing = 0;
   for (int i = 0; i < settings_.assignmentCount; i++) {
@@ -46,12 +61,39 @@ void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &
                                                             : Ui::PlaybackMode::OneShot);
   }
   if (DebugFlags::kEnableDebugLogs) {
-    Serial.printf("Assignments applied: %d, missing: %d\n", applied, missing);
+    Serial.printf("Assignments applied: %d, missing: %d, playback_modes_applied: %d, playback_modes_missing: %d\n",
+                  applied,
+                  missing,
+                  playbackModesApplied,
+                  playbackModesMissing);
   }
 }
 
 void SamplerRuntime::collectAssignmentsFromUi(const Ui &ui, const SampleLibrary::Catalog &catalog) {
   settings_.panicNote = static_cast<int16_t>(ui.panicMidiNote());
+
+  settings_.playbackModeCount = 0;
+  for (int sampleIndex = 0; sampleIndex < catalog.count; sampleIndex++) {
+    if (settings_.playbackModeCount >= SettingsStore::SamplerSettings::kMaxPlaybackModes) {
+      Serial.println("Playback mode export truncated to settings capacity");
+      break;
+    }
+
+    if (!ui.sampleLoopPlaybackEnabled(sampleIndex)) {
+      continue;
+    }
+
+    const String &samplePath = catalog.paths[sampleIndex];
+    if (samplePath.length() == 0) {
+      continue;
+    }
+
+    SettingsStore::SamplePlaybackMode &mode = settings_.playbackModes[settings_.playbackModeCount];
+    mode.samplePath = samplePath;
+    mode.loopPlaybackEnabled = true;
+    settings_.playbackModeCount++;
+  }
+
   settings_.assignmentCount = 0;
   for (int note = 0; note < 128; note++) {
     if (settings_.assignmentCount >= SettingsStore::SamplerSettings::kMaxAssignments) {
