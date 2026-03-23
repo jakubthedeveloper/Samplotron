@@ -103,7 +103,7 @@ Notes:
 - `panic_note`: optional `0..127`; when received as MIDI NOTE ON, all active voices are stopped immediately
 - `playback_mode`: optional `"shot"` or `"loop"` stored per assignment/sample
 - `volume`: clamped to `0..100`
-- `volume = 100`: full per-voice level (before fixed mixer headroom)
+- `volume = 100`: full per-voice level (before dynamic mixer headroom)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
 - maximum assignments: `128`
 
@@ -132,7 +132,7 @@ Playback engine behavior:
 - works for both SD-streamed and RAM-backed sample playback,
 - SD-streamed voices use per-voice read-ahead RAM buffers that are refilled by a dedicated `stream_refill`
   task; the audio update loop consumes already buffered data (no direct SD read in the critical mix loop),
-- per-voice mixer gain is attenuated by a fixed headroom factor (`kPerVoiceMixHeadroomGain = 0.125`) so 8 full-scale voices can be mixed without clipping.
+- per-voice mixer gain uses dynamic headroom (`kDynamicMixMinGain..kDynamicMixMaxGain`) based on active voice count; master output passes through a limiter with make-up gain to increase loudness while controlling clipping.
 - trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
 
 Important behavior:

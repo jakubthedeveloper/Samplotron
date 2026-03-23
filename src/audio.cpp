@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <limits.h>
+#include <math.h>
 #include <string.h>
 
 #include "AudioFileSource.h"
@@ -216,6 +217,82 @@ class StableAudioOutputI2S : public AudioOutputI2S {
   uint32_t appliedRateSetCalls_ = 0;
 };
 
+class SimpleLimiterAudioOutput : public AudioOutput {
+ public:
+  explicit SimpleLimiterAudioOutput(AudioOutput *sink) : sink_(sink) { updateSmoothing(); }
+
+  bool SetRate(int hz) override {
+    sampleRateHz_ = (hz > 0) ? hz : sampleRateHz_;
+    updateSmoothing();
+    return sink_ && sink_->SetRate(hz);
+  }
+
+  bool SetBitsPerSample(int bits) override { return sink_ && sink_->SetBitsPerSample(bits); }
+  bool SetChannels(int channels) override { return sink_ && sink_->SetChannels(channels); }
+  bool begin() override { return sink_ && sink_->begin(); }
+
+  bool stop() override {
+    limiterGain_ = 1.0f;
+    return sink_ && sink_->stop();
+  }
+
+  bool loop() override { return sink_ && sink_->loop(); }
+
+  bool ConsumeSample(int16_t sample[2]) override {
+    if (!sink_) return false;
+
+    float left = static_cast<float>(sample[0]) / 32768.0f;
+    float right = static_cast<float>(sample[1]) / 32768.0f;
+
+    // Recover perceived loudness after conservative per-voice headroom.
+    left *= kLimiterMakeupGain;
+    right *= kLimiterMakeupGain;
+
+    float peak = fabsf(left);
+    const float rightAbs = fabsf(right);
+    if (rightAbs > peak) peak = rightAbs;
+
+    float desiredGain = 1.0f;
+    if (peak > kLimiterThreshold && peak > 0.0f) {
+      desiredGain = kLimiterThreshold / peak;
+    }
+
+    if (desiredGain < limiterGain_) {
+      // Clamp immediately to avoid transient clipping distortion.
+      limiterGain_ = desiredGain;
+    } else {
+      limiterGain_ = desiredGain + (releaseCoeff_ * (limiterGain_ - desiredGain));
+    }
+
+    left *= limiterGain_;
+    right *= limiterGain_;
+
+    if (left > 1.0f) left = 1.0f;
+    if (left < -1.0f) left = -1.0f;
+    if (right > 1.0f) right = 1.0f;
+    if (right < -1.0f) right = -1.0f;
+
+    sample[0] = static_cast<int16_t>(left * 32767.0f);
+    sample[1] = static_cast<int16_t>(right * 32767.0f);
+    return sink_->ConsumeSample(sample);
+  }
+
+ private:
+  void updateSmoothing() {
+    const float sampleRate = static_cast<float>((sampleRateHz_ > 0) ? sampleRateHz_ : 44100);
+    releaseCoeff_ = expf(-1.0f / (sampleRate * kLimiterReleaseSeconds));
+  }
+
+  static constexpr float kLimiterThreshold = 0.995f;
+  static constexpr float kLimiterMakeupGain = 1.0f;
+  static constexpr float kLimiterReleaseSeconds = 0.030f;
+
+  AudioOutput *sink_ = nullptr;
+  int sampleRateHz_ = 44100;
+  float limiterGain_ = 1.0f;
+  float releaseCoeff_ = 0.0f;
+};
+
 constexpr uint8_t kVolumeScaleMax = 100;
 constexpr int kMixerBufferSamples = 512;
 
@@ -224,11 +301,31 @@ float gainFromVolume(uint8_t volume) {
   return static_cast<float>(clamped) / static_cast<float>(kVolumeScaleMax);
 }
 
-// Keep enough headroom so 8 simultaneous full-scale voices do not clip in the mixer.
-constexpr float kPerVoiceMixHeadroomGain = 0.125f;
+// Dynamic headroom: keep polyphony safe while allowing much louder single-voice playback.
+constexpr float kDynamicMixMinGain = 0.125f;  // 8x full-scale voices remain bounded pre-limiter.
+constexpr float kDynamicMixMaxGain = 0.35f;   // +8.9 dB vs previous fixed 0.125 for single voice.
+constexpr uint32_t kDynamicMixAttackUs = 120000;   // Recover loudness slowly to avoid pumping.
+constexpr uint32_t kDynamicMixReleaseUs = 20000;   // Clamp quickly when polyphony increases.
 
-float voiceGainFromVolume(uint8_t volume) {
-  return gainFromVolume(volume) * kPerVoiceMixHeadroomGain;
+float clamp01(float value) {
+  if (value < 0.0f) return 0.0f;
+  if (value > 1.0f) return 1.0f;
+  return value;
+}
+
+float dynamicMixGainTarget(uint8_t activeVoices) {
+  if (activeVoices == 0) return kDynamicMixMaxGain;
+
+  const float gain = 1.0f / static_cast<float>(activeVoices);
+  if (gain < kDynamicMixMinGain) return kDynamicMixMinGain;
+  if (gain > kDynamicMixMaxGain) return kDynamicMixMaxGain;
+  return gain;
+}
+
+float smoothGain(float current, float target, uint32_t dtUs, uint32_t timeConstantUs) {
+  if (dtUs == 0 || timeConstantUs == 0) return target;
+  const float alpha = clamp01(static_cast<float>(dtUs) / static_cast<float>(timeConstantUs));
+  return current + ((target - current) * alpha);
 }
 
 // Limit per-update work so SD streamed voices don't monopolize audio task cycles.
@@ -255,7 +352,7 @@ struct Audio::Impl {
     AudioFileSource *activeSource = nullptr;
     AudioOutputMixerStub *stub = nullptr;
     BudgetedAudioOutput *budgetedOut = nullptr;
-    float targetGain = 0.0f;
+    float targetGain = 0.0f;  // Per-voice gain from sample volume (0..1), before dynamic mix gain.
     float currentGain = 0.0f;
     uint32_t fadeInUs = 0;
     uint8_t volume = 100;
@@ -270,6 +367,7 @@ struct Audio::Impl {
   };
 
   StableAudioOutputI2S *out = nullptr;
+  SimpleLimiterAudioOutput *limitedOut = nullptr;
   AudioOutputMixer *mixer = nullptr;
   Voice voices[kVoiceCount];
   StreamManager streamManager;
@@ -282,6 +380,8 @@ struct Audio::Impl {
   uint32_t slowPlayCount = 0;
   uint32_t maxPlayUs = 0;
   uint32_t lastDiagLogMs = 0;
+  float dynamicMixGain = kDynamicMixMaxGain;
+  uint32_t dynamicMixLastUs = 0;
 };
 
 namespace {
@@ -336,20 +436,39 @@ void refreshStats(Audio::Impl *impl) {
   }
 }
 
-void updateVoiceFadeIn(Audio::Impl::Voice &voice, uint32_t nowUs) {
-  if (!voice.active || !voice.stub) return;
-  if (voice.currentGain >= voice.targetGain) return;
+float voiceFadeRatio(const Audio::Impl::Voice &voice, uint32_t nowUs) {
+  if (!voice.active) return 0.0f;
+  if (voice.fadeInUs == 0) return 1.0f;
 
   const uint32_t elapsedUs = nowUs - voice.startUs;
-  float ratio = 1.0f;
-  if (voice.fadeInUs > 0) {
-    ratio = static_cast<float>(elapsedUs) / static_cast<float>(voice.fadeInUs);
-    if (ratio > 1.0f) ratio = 1.0f;
+  const float ratio = static_cast<float>(elapsedUs) / static_cast<float>(voice.fadeInUs);
+  return (ratio > 1.0f) ? 1.0f : ratio;
+}
+
+void updateDynamicMixGain(Audio::Impl *impl, uint32_t nowUs) {
+  if (!impl) return;
+
+  const float target = dynamicMixGainTarget(impl->stats.activeVoices);
+  const uint32_t dtUs = (impl->dynamicMixLastUs == 0) ? 0 : (nowUs - impl->dynamicMixLastUs);
+  impl->dynamicMixLastUs = nowUs;
+
+  if (dtUs == 0) {
+    impl->dynamicMixGain = target;
+    return;
   }
 
-  const float newGain = voice.targetGain * ratio;
-  if (newGain <= voice.currentGain) return;
-  voice.currentGain = newGain;
+  const uint32_t timeConstantUs = (target < impl->dynamicMixGain) ? kDynamicMixReleaseUs
+                                                                   : kDynamicMixAttackUs;
+  impl->dynamicMixGain = smoothGain(impl->dynamicMixGain, target, dtUs, timeConstantUs);
+}
+
+void updateVoiceGain(Audio::Impl::Voice &voice, float dynamicMixGain, uint32_t nowUs) {
+  if (!voice.active || !voice.stub) return;
+
+  const float gain = voice.targetGain * dynamicMixGain * voiceFadeRatio(voice, nowUs);
+  if (fabsf(gain - voice.currentGain) < 0.0005f) return;
+
+  voice.currentGain = gain;
   voice.stub->SetGain(voice.currentGain);
 }
 
@@ -504,9 +623,9 @@ bool beginVoiceFromPath(Audio::Impl *impl,
   if (!voice.activeSource) {
     return false;
   }
-  voice.targetGain = voiceGainFromVolume(volume);
+  voice.targetGain = gainFromVolume(volume);
   voice.fadeInUs = fadeInUs;
-  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : voice.targetGain;
+  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();
@@ -554,9 +673,9 @@ bool beginVoiceFromRam(Audio::Impl *impl,
   }
 
   voice.activeSource = voice.ramSource;
-  voice.targetGain = voiceGainFromVolume(volume);
+  voice.targetGain = gainFromVolume(volume);
   voice.fadeInUs = fadeInUs;
-  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : voice.targetGain;
+  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();
@@ -649,6 +768,8 @@ Audio::~Audio() {
 
   delete impl_->mixer;
   impl_->mixer = nullptr;
+  delete impl_->limitedOut;
+  impl_->limitedOut = nullptr;
   delete impl_->out;
   impl_->out = nullptr;
 
@@ -676,9 +797,23 @@ void Audio::begin() {
   impl_->out->SetPinout(Pins::I2S_BCLK, Pins::I2S_LRC, Pins::I2S_DOUT);
   impl_->out->SetGain(1.0f);
 
-  impl_->mixer = new AudioOutputMixer(kMixerBufferSamples, impl_->out);
+  impl_->limitedOut = new SimpleLimiterAudioOutput(impl_->out);
+  if (!impl_->limitedOut) {
+    Serial.println("Audio begin failed: no memory for limiter output");
+    delete impl_->limitedOut;
+    impl_->limitedOut = nullptr;
+    delete impl_->out;
+    impl_->out = nullptr;
+    delete impl_;
+    impl_ = nullptr;
+    return;
+  }
+
+  impl_->mixer = new AudioOutputMixer(kMixerBufferSamples, impl_->limitedOut);
   if (!impl_->mixer) {
     Serial.println("Audio begin failed: no memory for mixer");
+    delete impl_->limitedOut;
+    impl_->limitedOut = nullptr;
     delete impl_->out;
     impl_->out = nullptr;
     delete impl_;
@@ -690,6 +825,8 @@ void Audio::begin() {
     Serial.println("Audio begin failed: stream manager init failed");
     delete impl_->mixer;
     impl_->mixer = nullptr;
+    delete impl_->limitedOut;
+    impl_->limitedOut = nullptr;
     delete impl_->out;
     impl_->out = nullptr;
     delete impl_;
@@ -725,6 +862,9 @@ void Audio::update() {
   updateSchedulingStats(impl_);
   const uint32_t nowUs = micros();
 
+  refreshStats(impl_);
+  updateDynamicMixGain(impl_, nowUs);
+
   bool stateChanged = false;
 
   for (int i = 0; i < kVoiceCount; i++) {
@@ -743,7 +883,7 @@ void Audio::update() {
       voice.budgetedOut->resetBudget(kVoiceLoopSampleBudget);
     }
 
-    updateVoiceFadeIn(voice, nowUs);
+    updateVoiceGain(voice, impl_->dynamicMixGain, nowUs);
 
     if (!voice.wav->loop()) {
       if (!voice.loopEnabled || !restartVoiceLoop(impl_, i)) {
