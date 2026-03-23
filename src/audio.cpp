@@ -995,14 +995,6 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
   const bool retriggeringGroup = hasActiveVoiceForGroup(impl_, retriggerGroupId);
   const uint32_t fadeInUs = retriggeringGroup ? kRetriggerFadeInUs : 0;
 
-  // Keep RAM hits responsive even if a long SD stream is active.
-  const bool streamVoicesStopped =
-      retriggeringGroup ? stopActiveStreamVoicesExceptGroup(impl_, retriggerGroupId)
-                        : stopActiveStreamVoices(impl_);
-  if (streamVoicesStopped) {
-    refreshStats(impl_);
-  }
-
   bool voiceWasStolen = false;
   const int voiceIndex = allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
   if (voiceIndex < 0) {
