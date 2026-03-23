@@ -28,7 +28,7 @@ help:
 	@echo "  make build-debug-midi  - build MIDI debug firmware"
 	@echo "  make test           - run unit tests (native)"
 	@echo "  make monitor        - open serial monitor (115200)"
-	@echo "  make convert-samples SAMPLES_DIR=/path/to/samples - convert *.wav to PCM16 44.1kHz mono"
+	@echo "  make convert-samples SAMPLES_DIR=/path/to/samples - convert *.wav to PCM16 44.1kHz mono + peak normalize to -1 dBFS"
 	@echo "  make convert-samples /path/to/samples            - same as above (path positional)"
 
 upload-main:
@@ -59,14 +59,22 @@ convert-samples:
 	@command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not found in PATH"; exit 1; }
 	@[ -d "$(SAMPLES_DIR)" ] || { echo "Missing directory: $(SAMPLES_DIR)"; exit 1; }
 	@set -e; \
+	target_peak_db="-1.0"; \
 	count="$$(find "$(SAMPLES_DIR)" -maxdepth 1 -type f \( -iname '*.wav' \) | wc -l)"; \
 	if [ "$$count" -eq 0 ]; then \
 		echo "No .wav files found in $(SAMPLES_DIR)"; \
 	else \
 		find "$(SAMPLES_DIR)" -maxdepth 1 -type f \( -iname '*.wav' \) | while IFS= read -r f; do \
 			tmp="$${f}.tmp.wav"; \
-			echo "Converting: $$f"; \
-			ffmpeg -nostdin -hide_banner -loglevel error -y -i "$$f" -ac 1 -ar 44100 -c:a pcm_s16le "$$tmp"; \
+			max_vol="$$(ffmpeg -nostdin -hide_banner -i "$$f" -af volumedetect -f null - 2>&1 | awk -F'max_volume: ' '/max_volume:/ {split($$2, a, " dB"); print a[1]}' | tail -n 1)"; \
+			if [ -z "$$max_vol" ] || [ "$$max_vol" = "-inf" ]; then \
+				gain_db="0.000"; \
+				echo "Converting + normalizing: $$f (max=unknown, gain=$$gain_db dB, target=$$target_peak_db dBFS)"; \
+			else \
+				gain_db="$$(awk -v target="$$target_peak_db" -v max="$$max_vol" 'BEGIN { printf "%.3f", (target - max) }')"; \
+				echo "Converting + normalizing: $$f (max=$$max_vol dB, gain=$$gain_db dB, target=$$target_peak_db dBFS)"; \
+			fi; \
+			ffmpeg -nostdin -hide_banner -loglevel error -y -i "$$f" -af "volume=$${gain_db}dB" -ac 1 -ar 44100 -c:a pcm_s16le "$$tmp"; \
 			mv "$$tmp" "$$f"; \
 		done; \
 	fi
