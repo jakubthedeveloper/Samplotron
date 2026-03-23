@@ -86,6 +86,7 @@ class Ui {
   bool setSamplePlaybackMode(int sampleIndex, PlaybackMode mode);
   PlaybackMode playbackModeForSample(int sampleIndex) const;
   bool sampleLoopPlaybackEnabled(int sampleIndex) const;
+  void forceMainScreen();
   void reportTriggeredSample(int sampleIndex);
   void clearTriggeredSample();
   void clearUnsavedChanges();

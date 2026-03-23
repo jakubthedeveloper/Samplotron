@@ -24,3 +24,5 @@ Result: pop/click still occurs in both retrigger and panic cases.
 4. Moved `nowUs` sampling in `Audio::update()` to occur after deferred-start processing so newly started voices use a valid timestamp.
 5. Temporarily reduced per-voice gain by 50% for A/B listening (diagnostic only).
 6. Observed that heavy UART `Serial.printf` diagnostics in the real-time path can introduce audible digital stutter, so voice-state logs should remain disabled by default.
+7. Dual-lane per-slot retrigger experiment (primary + shadow voice in the same logical slot, delayed fade-out on old lane, immediate start on new lane) with doubled physical stream/voice resources.
+   Result: click/pop still present on retrigger.

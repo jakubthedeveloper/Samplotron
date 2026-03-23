@@ -280,6 +280,13 @@ bool Ui::sampleLoopPlaybackEnabled(int sampleIndex) const {
   return playbackModeForSample(sampleIndex) == PlaybackMode::Loop;
 }
 
+void Ui::forceMainScreen() {
+  if (state_ == State::Main) return;
+  state_ = State::Main;
+  assigningPanic_ = false;
+  markDirty();
+}
+
 void Ui::markDirty() {
   updateDerivedModel();
   model_.dirty = true;

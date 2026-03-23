@@ -16,6 +16,7 @@ class DisplaySsd1309 {
 
   bool begin();
   void setAudio(Audio *audio);
+  void renderStartupMessage(const char *title, const char *subtitle);
   void renderUi(Ui &ui);
   void renderBootScreen(const BootScreenModel &model);
   void update();

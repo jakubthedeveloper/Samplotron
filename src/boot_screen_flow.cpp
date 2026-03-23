@@ -33,6 +33,13 @@ void BootScreenFlow::waitForDismissOrTimeout(unsigned long timeoutMs) {
     }
     delay(5);
   }
+
+  // Drain post-dismiss switch release/click events so UI always starts from a stable Main screen.
+  const unsigned long settleUntilMs = millis() + 250;
+  while (millis() < settleUntilMs) {
+    input_->update(nullptr, nullptr);
+    delay(5);
+  }
 }
 
 void BootScreenFlow::onInputEvent(const Input::Event & /*event*/, void *context) {

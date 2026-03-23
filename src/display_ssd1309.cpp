@@ -30,24 +30,49 @@ bool detectDisplayAddress(uint8_t &address7bit) {
 }  // namespace
 
 bool DisplaySsd1309::begin() {
-  Wire.begin(Pins::OLED_MOSI, Pins::OLED_SCK, 400000U);
+  constexpr uint8_t kInitAttempts = 12;
+  constexpr uint16_t kRetryDelayMs = 60;
 
-  uint8_t displayAddress = 0;
-  if (!detectDisplayAddress(displayAddress)) {
-    Serial.println("SSD1309 not found on I2C (tried 0x3C/0x3D)");
-    ready_ = false;
-    return false;
+  for (uint8_t attempt = 0; attempt < kInitAttempts; attempt++) {
+    Wire.end();
+    delay(4);
+    Wire.begin(Pins::OLED_MOSI, Pins::OLED_SCK, 400000U);
+    delay(4);
+
+    uint8_t displayAddress = 0;
+    if (!detectDisplayAddress(displayAddress)) {
+      delay(kRetryDelayMs);
+      continue;
+    }
+
+    gDisplay.setI2CAddress(static_cast<uint8_t>(displayAddress << 1));
+    if (!gDisplay.begin()) {
+      delay(kRetryDelayMs);
+      continue;
+    }
+
+    gDisplay.clearBuffer();
+    gDisplay.sendBuffer();
+    ready_ = true;
+    dirty_ = false;
+    return true;
   }
 
-  gDisplay.setI2CAddress(static_cast<uint8_t>(displayAddress << 1));
-  if (!gDisplay.begin()) {
-    ready_ = false;
-    return false;
-  }
+  Serial.println("SSD1309 init failed after retries (tried 0x3C/0x3D)");
+  ready_ = false;
+  return false;
+}
 
-  ready_ = true;
+void DisplaySsd1309::renderStartupMessage(const char *title, const char *subtitle) {
+  if (!ready_) return;
+
+  gDisplay.clearBuffer();
+  gDisplay.setFont(u8g2_font_10x20_tf);
+  gDisplay.drawStr(0, 24, (title && title[0] != '\0') ? title : "Starting...");
+  gDisplay.setFont(u8g2_font_5x8_tf);
+  gDisplay.drawStr(0, 38, (subtitle && subtitle[0] != '\0') ? subtitle : "Please wait...");
+  gDisplay.sendBuffer();
   dirty_ = false;
-  return true;
 }
 
 void DisplaySsd1309::setAudio(Audio *audio) {

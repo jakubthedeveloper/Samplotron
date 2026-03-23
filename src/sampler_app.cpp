@@ -1,6 +1,7 @@
 #include "sampler_app.h"
 
 #include <Arduino.h>
+#include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -22,6 +23,14 @@ constexpr uint16_t kUiStatusQueueLength = 16;
 constexpr uint16_t kAudioTaskStackWords = 6144;
 constexpr uint16_t kLoaderTaskStackWords = 6144;
 constexpr uint16_t kUiTaskStackWords = 8192;
+
+const char *startupTitleForResetReason() {
+  const esp_reset_reason_t reason = esp_reset_reason();
+  if (reason == ESP_RST_SW || reason == ESP_RST_PANIC || reason == ESP_RST_TASK_WDT) {
+    return "Updating firmware...";
+  }
+  return "Starting...";
+}
 
 }  // namespace
 
@@ -63,6 +72,7 @@ void SamplerApp::initializeHardware() {
     Serial.println("Display init failed");
   } else {
     Serial.println("Display OK");
+    display_.renderStartupMessage(startupTitleForResetReason(), "Please wait...");
   }
 }
 
@@ -102,6 +112,7 @@ void SamplerApp::prepareCallbacksAndBootFlow() {
       &ui_, &catalog_, &runtime_, &triggerEngine_, loaderCommandQueue_, uiStatusQueue_);
   callbackBinder_.begin(&ui_, &midi_, &playbackRouter_, &saveService_, loaderCommandQueue_);
   bootScreenFlow_.waitForDismissOrTimeout();
+  ui_.forceMainScreen();
 
   callbackBinder_.bindUiAndMidiCallbacks();
   display_.renderUi(ui_);
