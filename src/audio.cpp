@@ -170,7 +170,6 @@ class BudgetedAudioOutput : public AudioOutput {
   void resetBudget(uint16_t sampleCount) { budgetSamples_ = sampleCount; }
 
   bool SetRate(int hz) override { return sink_ && sink_->SetRate(hz); }
-  bool SetBitsPerSample(int bits) override { return sink_ && sink_->SetBitsPerSample(bits); }
   bool SetChannels(int channels) override { return sink_ && sink_->SetChannels(channels); }
   bool begin() override { return sink_ && sink_->begin(); }
   bool stop() override {
@@ -227,7 +226,6 @@ class SimpleLimiterAudioOutput : public AudioOutput {
     return sink_ && sink_->SetRate(hz);
   }
 
-  bool SetBitsPerSample(int bits) override { return sink_ && sink_->SetBitsPerSample(bits); }
   bool SetChannels(int channels) override { return sink_ && sink_->SetChannels(channels); }
   bool begin() override { return sink_ && sink_->begin(); }
 
