@@ -16,3 +16,11 @@
 5. Removal of blocking wait loops (`while(update())`) for retrigger/panic and switching to asynchronous fade-out.
 
 Result: pop/click still occurs in both retrigger and panic cases.
+
+## Additional attempts (2026-03-23)
+1. Added detailed `VOICE_EVT` lifecycle logging (trigger, queued start, deferred start, loop end, stop commit, panic/group stop).
+2. Verified retrigger path transitions are ordered as: queue pending start -> fade-out stop request -> zero-gain hold -> hard stop -> deferred restart.
+3. Added time-order guards in fade ratio code (`nowUs <= startUs` and `nowUs <= stopStartUs`) to avoid unsigned time underflow around retrigger boundaries.
+4. Moved `nowUs` sampling in `Audio::update()` to occur after deferred-start processing so newly started voices use a valid timestamp.
+5. Temporarily reduced per-voice gain by 50% for A/B listening (diagnostic only).
+6. Observed that heavy UART `Serial.printf` diagnostics in the real-time path can introduce audible digital stutter, so voice-state logs should remain disabled by default.
