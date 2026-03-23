@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "audio.h"
 #include "ui.h"
 
 class DisplaySsd1309 {
@@ -14,6 +15,7 @@ class DisplaySsd1309 {
   };
 
   bool begin();
+  void setAudio(Audio *audio);
   void renderUi(Ui &ui);
   void renderBootScreen(const BootScreenModel &model);
   void update();
@@ -26,8 +28,11 @@ class DisplaySsd1309 {
   void renderLibrary(const Ui::RenderModel &model, const Ui &ui);
   void renderAssign(const Ui::RenderModel &model, const Ui &ui);
   void renderSaving();
+  void renderVisualizer();
 
   bool ready_ = false;
   bool dirty_ = false;
   Ui *ui_ = nullptr;
+  Audio *audio_ = nullptr;
+  uint32_t lastVisualizerFrameMs_ = 0;
 };

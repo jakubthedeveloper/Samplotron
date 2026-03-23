@@ -68,6 +68,7 @@ void SamplerApp::initializeHardware() {
 
 void SamplerApp::initializeRuntimeDefaults() {
   runtime_.applyDefaultSettings();
+  display_.setAudio(&audio_);
   bootScreenFlow_.begin(&display_, &input_, &ui_);
   renderBootScreen(true);
 }

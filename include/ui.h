@@ -16,6 +16,7 @@ class Ui {
     Library,
     AssignNote,
     Saving,
+    Visualizer,
   };
 
   enum class EventType : uint8_t {
@@ -102,6 +103,7 @@ class Ui {
   void handleMainEvent(const Event &event);
   void handleLibraryEvent(const Event &event);
   void handleAssignEvent(const Event &event);
+  void handleVisualizerEvent(const Event &event);
   void transitionTo(State state);
   void startSave();
   void completeSave();

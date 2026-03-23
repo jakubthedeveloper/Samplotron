@@ -1,6 +1,7 @@
 #include "audio.h"
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
 #include <limits.h>
 #include <math.h>
 #include <string.h>
@@ -189,6 +190,14 @@ class BudgetedAudioOutput : public AudioOutput {
   uint16_t budgetSamples_ = 0;
 };
 
+struct WaveformCaptureState {
+  mutable portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
+  int8_t ring[Audio::kWaveformPointCount] = {0};
+  uint16_t head = 0;
+  uint16_t count = 0;
+  uint16_t decimationCounter = 0;
+};
+
 class StableAudioOutputI2S : public AudioOutputI2S {
  public:
   StableAudioOutputI2S(int port, int outputMode, int dmaCount, int useApll)
@@ -218,7 +227,10 @@ class StableAudioOutputI2S : public AudioOutputI2S {
 
 class SimpleLimiterAudioOutput : public AudioOutput {
  public:
-  explicit SimpleLimiterAudioOutput(AudioOutput *sink) : sink_(sink) { updateSmoothing(); }
+  explicit SimpleLimiterAudioOutput(AudioOutput *sink, WaveformCaptureState *waveformCapture)
+      : sink_(sink), waveformCapture_(waveformCapture) {
+    updateSmoothing();
+  }
 
   bool SetRate(int hz) override {
     sampleRateHz_ = (hz > 0) ? hz : sampleRateHz_;
@@ -272,10 +284,35 @@ class SimpleLimiterAudioOutput : public AudioOutput {
 
     sample[0] = static_cast<int16_t>(left * 32767.0f);
     sample[1] = static_cast<int16_t>(right * 32767.0f);
+    captureWaveformSample(sample);
     return sink_->ConsumeSample(sample);
   }
 
  private:
+  void captureWaveformSample(const int16_t sample[2]) {
+    if (!waveformCapture_) return;
+
+    waveformCapture_->decimationCounter++;
+    if (waveformCapture_->decimationCounter < kWaveformDecimation) {
+      return;
+    }
+    waveformCapture_->decimationCounter = 0;
+
+    const int32_t mono = (static_cast<int32_t>(sample[0]) + static_cast<int32_t>(sample[1])) / 2;
+    int32_t quantized = mono / 256;
+    if (quantized > 127) quantized = 127;
+    if (quantized < -128) quantized = -128;
+
+    portENTER_CRITICAL(&waveformCapture_->lock);
+    waveformCapture_->ring[waveformCapture_->head] = static_cast<int8_t>(quantized);
+    waveformCapture_->head = (waveformCapture_->head + 1U) % Audio::kWaveformPointCount;
+    if (waveformCapture_->count < Audio::kWaveformPointCount) {
+      waveformCapture_->count++;
+    }
+    portEXIT_CRITICAL(&waveformCapture_->lock);
+  }
+
+  static constexpr uint16_t kWaveformDecimation = 32;
   void updateSmoothing() {
     const float sampleRate = static_cast<float>((sampleRateHz_ > 0) ? sampleRateHz_ : 44100);
     releaseCoeff_ = expf(-1.0f / (sampleRate * kLimiterReleaseSeconds));
@@ -286,6 +323,7 @@ class SimpleLimiterAudioOutput : public AudioOutput {
   static constexpr float kLimiterReleaseSeconds = 0.030f;
 
   AudioOutput *sink_ = nullptr;
+  WaveformCaptureState *waveformCapture_ = nullptr;
   int sampleRateHz_ = 44100;
   float limiterGain_ = 1.0f;
   float releaseCoeff_ = 0.0f;
@@ -293,10 +331,11 @@ class SimpleLimiterAudioOutput : public AudioOutput {
 
 constexpr uint8_t kVolumeScaleMax = 100;
 constexpr int kMixerBufferSamples = 512;
+constexpr float kPerVoiceVolumeScale = 0.65f;
 
 float gainFromVolume(uint8_t volume) {
   const uint8_t clamped = (volume > kVolumeScaleMax) ? kVolumeScaleMax : volume;
-  return static_cast<float>(clamped) / static_cast<float>(kVolumeScaleMax);
+  return (static_cast<float>(clamped) / static_cast<float>(kVolumeScaleMax)) * kPerVoiceVolumeScale;
 }
 
 // Dynamic headroom: keep polyphony safe while allowing much louder single-voice playback.
@@ -380,6 +419,7 @@ struct Audio::Impl {
   uint32_t lastDiagLogMs = 0;
   float dynamicMixGain = kDynamicMixMaxGain;
   uint32_t dynamicMixLastUs = 0;
+  WaveformCaptureState waveformCapture;
 };
 
 namespace {
@@ -795,7 +835,7 @@ void Audio::begin() {
   impl_->out->SetPinout(Pins::I2S_BCLK, Pins::I2S_LRC, Pins::I2S_DOUT);
   impl_->out->SetGain(1.0f);
 
-  impl_->limitedOut = new SimpleLimiterAudioOutput(impl_->out);
+  impl_->limitedOut = new SimpleLimiterAudioOutput(impl_->out, &impl_->waveformCapture);
   if (!impl_->limitedOut) {
     Serial.println("Audio begin failed: no memory for limiter output");
     delete impl_->limitedOut;
@@ -1032,4 +1072,23 @@ Audio::RuntimeStats Audio::runtimeStats() const {
 uint32_t Audio::voiceStealCount() const {
   if (!impl_) return 0;
   return impl_->stats.voiceStealCount;
+}
+
+bool Audio::waveformSnapshot(WaveformSnapshot &snapshot) const {
+  snapshot.validPoints = 0;
+  if (!impl_) return false;
+
+  const WaveformCaptureState &capture = impl_->waveformCapture;
+  portENTER_CRITICAL(&capture.lock);
+  const uint16_t count = capture.count;
+  const uint16_t head = capture.head;
+  const uint16_t start = (count == Audio::kWaveformPointCount) ? head : 0;
+  for (uint16_t i = 0; i < count; i++) {
+    const uint16_t index = (start + i) % Audio::kWaveformPointCount;
+    snapshot.points[i] = capture.ring[index];
+  }
+  portEXIT_CRITICAL(&capture.lock);
+
+  snapshot.validPoints = count;
+  return count > 0;
 }

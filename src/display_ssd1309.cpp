@@ -50,6 +50,10 @@ bool DisplaySsd1309::begin() {
   return true;
 }
 
+void DisplaySsd1309::setAudio(Audio *audio) {
+  audio_ = audio;
+}
+
 void DisplaySsd1309::renderUi(Ui &ui) {
   ui_ = &ui;
   dirty_ = true;
@@ -82,8 +86,17 @@ void DisplaySsd1309::renderBootScreen(const BootScreenModel &model) {
 void DisplaySsd1309::update() {
   if (!ready_ || !ui_) return;
 
-  if (!ui_->consumeDirty() && !dirty_) return;
   const Ui::RenderModel &model = ui_->model();
+  const bool visualizerActive = (model.state == Ui::State::Visualizer);
+  const bool modelDirty = ui_->consumeDirty();
+  if (!visualizerActive && !modelDirty && !dirty_) return;
+
+  if (visualizerActive && !modelDirty && !dirty_) {
+    const uint32_t nowMs = millis();
+    if ((nowMs - lastVisualizerFrameMs_) < 33) {
+      return;
+    }
+  }
 
   gDisplay.clearBuffer();
   switch (model.state) {
@@ -99,9 +112,17 @@ void DisplaySsd1309::update() {
     case Ui::State::Saving:
       renderSaving();
       break;
+    case Ui::State::Visualizer:
+      renderVisualizer();
+      break;
   }
-  renderTopRightIndicators(model);
+  if (model.state != Ui::State::Visualizer) {
+    renderTopRightIndicators(model);
+  }
   gDisplay.sendBuffer();
+  if (visualizerActive) {
+    lastVisualizerFrameMs_ = millis();
+  }
   dirty_ = false;
 }
 
@@ -294,6 +315,45 @@ void DisplaySsd1309::renderSaving() {
   gDisplay.drawStr(0, 22, "Saving...");
   gDisplay.setFont(u8g2_font_5x8_tf);
   gDisplay.drawStr(0, 38, "Please wait");
+}
+
+void DisplaySsd1309::renderVisualizer() {
+  constexpr int x0 = 0;
+  constexpr int y0 = 0;
+  constexpr int width = 128;
+  constexpr int height = 64;
+  constexpr int midY = y0 + (height / 2);
+
+  gDisplay.drawFrame(x0, y0, width, height);
+  gDisplay.drawHLine(x0 + 1, midY, width - 2);
+
+  Audio::WaveformSnapshot snapshot;
+  if (!audio_ || !audio_->waveformSnapshot(snapshot) || snapshot.validPoints < 2) {
+    return;
+  }
+
+  const int pointCount = static_cast<int>(snapshot.validPoints);
+  const int drawableW = width - 2;
+  const int drawableH = height - 2;
+  const int halfH = drawableH / 2;
+  constexpr int kVisualizerAmplitudeScale = 4;
+
+  int prevX = x0 + 1;
+  int prevY = midY;
+  for (int x = 0; x < drawableW; x++) {
+    const int index = (x * pointCount) / drawableW;
+    const int8_t sample = snapshot.points[index];
+    const int scaledSample = static_cast<int>(sample) * kVisualizerAmplitudeScale;
+    int y = midY - ((scaledSample * halfH) / 128);
+    if (y < y0 + 1) y = y0 + 1;
+    if (y > y0 + height - 2) y = y0 + height - 2;
+    const int drawX = x0 + 1 + x;
+    if (x > 0) {
+      gDisplay.drawLine(prevX, prevY, drawX, y);
+    }
+    prevX = drawX;
+    prevY = y;
+  }
 }
 
 void DisplaySsd1309::renderTopRightIndicators(const Ui::RenderModel &model) {

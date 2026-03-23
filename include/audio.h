@@ -6,11 +6,17 @@
 class Audio {
  public:
   static constexpr uint8_t kVoiceCount = 8;
+  static constexpr uint16_t kWaveformPointCount = 128;
 
   struct RuntimeStats {
     uint8_t activeVoices = 0;
     uint8_t activeVoicePeak = 0;
     uint32_t voiceStealCount = 0;
+  };
+
+  struct WaveformSnapshot {
+    int8_t points[kWaveformPointCount] = {0};
+    uint16_t validPoints = 0;
   };
 
   struct Impl;
@@ -37,6 +43,7 @@ class Audio {
                      bool loopEnabled = false);
   RuntimeStats runtimeStats() const;
   uint32_t voiceStealCount() const;
+  bool waveformSnapshot(WaveformSnapshot &snapshot) const;
 
  private:
   Impl *impl_ = nullptr;

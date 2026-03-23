@@ -125,6 +125,9 @@ void Ui::handleEvent(const Event &event) {
       break;
     case State::Saving:
       break;
+    case State::Visualizer:
+      handleVisualizerEvent(event);
+      break;
   }
 }
 
@@ -358,6 +361,8 @@ void Ui::handleMainEvent(const Event &event) {
       }
       return;
     case EventType::LeftClick:
+      transitionTo(State::Visualizer);
+      return;
     case EventType::RightLongPress:
     case EventType::MidiNoteOn:
       return;
@@ -406,6 +411,20 @@ void Ui::handleAssignEvent(const Event &event) {
     case EventType::RightRotate:
     case EventType::RightClick:
     case EventType::RightLongPress:
+    case EventType::MidiNoteOn:
+      return;
+  }
+}
+
+void Ui::handleVisualizerEvent(const Event &event) {
+  switch (event.type) {
+    case EventType::LeftRotate:
+    case EventType::LeftClick:
+    case EventType::RightRotate:
+    case EventType::RightClick:
+    case EventType::RightLongPress:
+      transitionTo(State::Main);
+      return;
     case EventType::MidiNoteOn:
       return;
   }
