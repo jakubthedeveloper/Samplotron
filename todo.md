@@ -26,3 +26,29 @@ Result: pop/click still occurs in both retrigger and panic cases.
 6. Observed that heavy UART `Serial.printf` diagnostics in the real-time path can introduce audible digital stutter, so voice-state logs should remain disabled by default.
 7. Dual-lane per-slot retrigger experiment (primary + shadow voice in the same logical slot, delayed fade-out on old lane, immediate start on new lane) with doubled physical stream/voice resources.
    Result: click/pop still present on retrigger.
+
+## Additional attempts (2026-03-24)
+1. RAM-side click tracing (`CLICK_TRACE` + `CLICK_EVT`) with ring-buffer snapshots and no realtime UART in audio callback.
+   Result: useful data; recurrent correlation with `begin_ram` and occasional `stop_voice`.
+2. Staged diagnostics with `STOP_ONLY` and `BEGIN_ONLY` retrigger modes.
+   Result: jumps still present; strongest correlation around `begin_ram` transitions.
+3. Retrigger start-offset matching (phase-like alignment in RAM source start).
+   Result: rejected due to behavior regression (sample did not start from beginning); reverted.
+4. One-sample muted start priming after `wav->begin`.
+   Result: no reliable improvement; reverted.
+5. Applying control operations at deterministic `Audio::update()` boundary via pending-op queue.
+   Result: no improvement in user tests; reverted.
+
+## Current observed signature
+1. Typical jump: `jump_op=begin_ram`, `jump_prev=(~3k..5k)`, `jump_curr=(0,0)`.
+2. This indicates a hard step to zero near source start or immediately after begin.
+
+## Recommended next steps (not yet implemented)
+1. Keep retrigger/panic logic, replace WAV/RAM playback with a trivial synthetic source feeding the same mixer/output path.
+   Goal: determine whether discontinuity appears before or inside WAV/RAM decode path.
+2. Force silence without stopping/resetting lower playback objects.
+   Goal: compare against normal stop/begin and isolate lifecycle-related discontinuity.
+3. Capture first 32-64 output frames per voice after each `begin_ram` into RAM trace.
+   Goal: verify whether initial decoder/source frames are zeros or malformed.
+4. Add DC/bias checks per stage (per-voice pre-mix and post-mix around retrigger/panic).
+   Goal: confirm whether any stage injects offset discontinuity.
