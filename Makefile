@@ -1,5 +1,7 @@
 PIO ?= pio
 SAMPLES_DIR ?= samples
+TRIM_START_DB := -45
+TRIM_START_MS := 10
 
 ifneq ($(filter convert-samples,$(MAKECMDGOALS)),)
 CONVERT_SAMPLES_ARGS := $(filter-out convert-samples,$(MAKECMDGOALS))
@@ -60,6 +62,11 @@ convert-samples:
 	@[ -d "$(SAMPLES_DIR)" ] || { echo "Missing directory: $(SAMPLES_DIR)"; exit 1; }
 	@set -e; \
 	target_peak_db="-1.0"; \
+	trim_db="$(TRIM_START_DB)"; \
+	trim_ms="$(TRIM_START_MS)"; \
+	trim_s="$$(awk -v ms="$$trim_ms" 'BEGIN { printf "%.3f", (ms / 1000.0) }')"; \
+	trim_filter="silenceremove=start_periods=1:start_duration=$$trim_s:start_threshold=$${trim_db}dB:detection=peak,"; \
+	trim_desc="trim=$$trim_db dB/$$trim_ms ms"; \
 	count="$$(find "$(SAMPLES_DIR)" -maxdepth 1 -type f \( -iname '*.wav' \) | wc -l)"; \
 	if [ "$$count" -eq 0 ]; then \
 		echo "No .wav files found in $(SAMPLES_DIR)"; \
@@ -69,12 +76,12 @@ convert-samples:
 			max_vol="$$(ffmpeg -nostdin -hide_banner -i "$$f" -af volumedetect -f null - 2>&1 | awk -F'max_volume: ' '/max_volume:/ {split($$2, a, " dB"); print a[1]}' | tail -n 1)"; \
 			if [ -z "$$max_vol" ] || [ "$$max_vol" = "-inf" ]; then \
 				gain_db="0.000"; \
-				echo "Converting + normalizing: $$f (max=unknown, gain=$$gain_db dB, target=$$target_peak_db dBFS)"; \
+				echo "Converting + normalizing: $$f (max=unknown, gain=$$gain_db dB, target=$$target_peak_db dBFS, $$trim_desc)"; \
 			else \
 				gain_db="$$(awk -v target="$$target_peak_db" -v max="$$max_vol" 'BEGIN { printf "%.3f", (target - max) }')"; \
-				echo "Converting + normalizing: $$f (max=$$max_vol dB, gain=$$gain_db dB, target=$$target_peak_db dBFS)"; \
+				echo "Converting + normalizing: $$f (max=$$max_vol dB, gain=$$gain_db dB, target=$$target_peak_db dBFS, $$trim_desc)"; \
 			fi; \
-			ffmpeg -nostdin -hide_banner -loglevel error -y -i "$$f" -af "volume=$${gain_db}dB" -ac 1 -ar 44100 -c:a pcm_s16le "$$tmp"; \
+			ffmpeg -nostdin -hide_banner -loglevel error -y -i "$$f" -af "$${trim_filter}volume=$${gain_db}dB" -ac 1 -ar 44100 -c:a pcm_s16le "$$tmp"; \
 			mv "$$tmp" "$$f"; \
 		done; \
 	fi
