@@ -36,6 +36,5 @@ struct SamplerSettings {
 void applyDefaults(SamplerSettings &settings);
 bool loadFromSd(SamplerSettings &settings);
 bool saveToSd(const SamplerSettings &settings);
-bool logRawJsonFromSd();
 
 }  // namespace SettingsStore

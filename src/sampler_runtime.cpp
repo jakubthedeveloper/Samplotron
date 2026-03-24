@@ -1,7 +1,5 @@
 #include "sampler_runtime.h"
 
-#include "debug_flags.h"
-
 void SamplerRuntime::applyDefaultSettings() {
   SettingsStore::applyDefaults(settings_);
   classificationReport_ = SampleClassifier::ClassificationReport{};
@@ -10,10 +8,7 @@ void SamplerRuntime::applyDefaultSettings() {
 }
 
 bool SamplerRuntime::loadSettingsFromSd() {
-  const bool loaded = SettingsStore::loadFromSd(settings_);
-  
-  SettingsStore::logRawJsonFromSd();
-  return loaded;
+  return SettingsStore::loadFromSd(settings_);
 }
 
 void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &catalog) const {
@@ -21,41 +16,28 @@ void SamplerRuntime::applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &
     ui.setPanicMidiNote(settings_.panicNote);
   }
 
-  int playbackModesApplied = 0;
-  int playbackModesMissing = 0;
   for (int i = 0; i < settings_.playbackModeCount; i++) {
     const SettingsStore::SamplePlaybackMode &mode = settings_.playbackModes[i];
     const int sampleIndex = SampleLibrary::findIndexByPath(catalog, mode.samplePath);
     if (sampleIndex < 0) {
-      playbackModesMissing++;
       continue;
     }
     ui.setSamplePlaybackMode(sampleIndex,
                              mode.loopPlaybackEnabled ? Ui::PlaybackMode::Loop
                                                       : Ui::PlaybackMode::OneShot);
-    playbackModesApplied++;
   }
 
-  int applied = 0;
-  int missing = 0;
   for (int i = 0; i < settings_.assignmentCount; i++) {
     const SettingsStore::MidiAssignment &assignment = settings_.assignments[i];
     const int sampleIndex = SampleLibrary::findIndexByPath(catalog, assignment.samplePath);
     if (sampleIndex < 0) {
-      
-      missing++;
       continue;
     }
-    if (ui.setMidiAssignment(assignment.note, sampleIndex)) {
-      applied++;
-    }
+    ui.setMidiAssignment(assignment.note, sampleIndex);
     ui.setSampleVolume(sampleIndex, assignment.volume);
     ui.setSamplePlaybackMode(sampleIndex,
                              assignment.loopPlaybackEnabled ? Ui::PlaybackMode::Loop
                                                             : Ui::PlaybackMode::OneShot);
-  }
-  if (DebugFlags::kEnableDebugLogs) {
-    
   }
 }
 
@@ -65,7 +47,6 @@ void SamplerRuntime::collectAssignmentsFromUi(const Ui &ui, const SampleLibrary:
   settings_.playbackModeCount = 0;
   for (int sampleIndex = 0; sampleIndex < catalog.count; sampleIndex++) {
     if (settings_.playbackModeCount >= SettingsStore::SamplerSettings::kMaxPlaybackModes) {
-      
       break;
     }
 
@@ -87,7 +68,6 @@ void SamplerRuntime::collectAssignmentsFromUi(const Ui &ui, const SampleLibrary:
   settings_.assignmentCount = 0;
   for (int note = 0; note < 128; note++) {
     if (settings_.assignmentCount >= SettingsStore::SamplerSettings::kMaxAssignments) {
-      
       break;
     }
 
@@ -162,34 +142,12 @@ const SampleClassifier::AssignedSampleClassification *SamplerRuntime::findClassi
 
 void SamplerRuntime::classifyAssignedSamplesAndLog() {
   SampleClassifier::classifyAssignedSamples(settings_, classificationReport_);
-  if (DebugFlags::kEnableDebugLogs) {
-    
-  }
-
-  if (DebugFlags::kEnableDebugLogs) {
-    for (int i = 0; i < classificationReport_.itemCount; i++) {
-      const SampleClassifier::AssignedSampleClassification &item = classificationReport_.items[i];
-      
-    }
-  }
 }
 
 void SamplerRuntime::loadClassifiedRamSamplesAndLog() {
-  const bool ok = SampleRamManager::prepare(settings_, classificationReport_, ramLoadReport_);
-  
-  if (ramLoadReport_.fixedBudgetMismatch) {
-    
-  }
-  
+  SampleRamManager::prepare(settings_, classificationReport_, ramLoadReport_);
 }
 
 void SamplerRuntime::buildActiveRegistryAndLog() {
   ActiveSampleRegistry::build(classificationReport_, activeRegistryReport_);
-  if (DebugFlags::kEnableDebugLogs) {
-    
-    for (int i = 0; i < activeRegistryReport_.itemCount; i++) {
-      const ActiveSampleRegistry::Entry &entry = activeRegistryReport_.items[i];
-      
-    }
-  }
 }

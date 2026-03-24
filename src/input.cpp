@@ -2,7 +2,6 @@
 
 #include <Wire.h>
 
-#include "debug_flags.h"
 #include "pins.h"
 
 namespace {
@@ -68,28 +67,24 @@ void Input::begin() {
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) {
-    
     ready_ = false;
     return;
   }
 
   // INTA/INTB mirrored, open-drain, active-low for reliable pull-up wiring.
   if (!mcpWriteReg(kRegIoCon, 0b01000100)) {
-    
     ready_ = false;
     return;
   }
 
   // GPA0..GPA5 used: two encoders (A/B + switch).
   if (!mcpWriteReg(kRegIodirA, 0xFF) || !mcpWriteReg(kRegGppuA, 0xFF)) {
-    
     ready_ = false;
     return;
   }
 
   // Interrupt-on-change against previous pin value.
   if (!mcpWriteReg(kRegIntConA, 0x00) || !mcpWriteReg(kRegGpIntEnA, kUsedInputMask)) {
-    
     ready_ = false;
     return;
   }
@@ -125,9 +120,6 @@ void Input::update(OnEventCallback callback, void *context) {
       encoderTicks_[i] = static_cast<int8_t>(encoderTicks_[i] + delta);
       if (encoderTicks_[i] >= kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
-        if (DebugFlags::kEnableInputEventLogs) {
-          
-        }
         if (callback) {
           const Event event = {
               (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
@@ -137,9 +129,6 @@ void Input::update(OnEventCallback callback, void *context) {
         }
       } else if (encoderTicks_[i] <= -kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
-        if (DebugFlags::kEnableInputEventLogs) {
-          
-        }
         if (callback) {
           const Event event = {
               (i == 0) ? EventType::LeftRotate : EventType::RightRotate,
@@ -160,9 +149,6 @@ void Input::update(OnEventCallback callback, void *context) {
     if ((millis() - switchLastDebounceMs_[i]) >= kDebounceMs &&
         switchRaw != switchStableState_[i]) {
       switchStableState_[i] = switchRaw;
-      if (DebugFlags::kEnableInputEventLogs) {
-        
-      }
       if (switchStableState_[i] == LOW) {
         switchPressStartMs_[i] = now;
         longPressFired_[i] = false;
@@ -178,9 +164,6 @@ void Input::update(OnEventCallback callback, void *context) {
     if (i == 1 && switchStableState_[i] == LOW && !longPressFired_[i] &&
         (now - switchPressStartMs_[i]) >= kLongPressMs) {
       longPressFired_[i] = true;
-      if (DebugFlags::kEnableInputEventLogs) {
-        
-      }
       if (callback) {
         const Event event = {EventType::RightLongPress, 0};
         callback(event, context);

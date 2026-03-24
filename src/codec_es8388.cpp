@@ -7,50 +7,77 @@
 
 namespace {
 
-constexpr uint8_t ES8388_ADDR = 0x10;
+constexpr uint8_t kEs8388Addr = 0x10;
+constexpr uint32_t kCodecI2cClockHz = 400000U;
+
+// ES8388 analog output volume registers use a 0..0x21 scale.
+constexpr uint8_t kAnalogOutputVolumeMaxCode = 0x21;
+// ES8388 DAC digital volume uses attenuation codes where 0 is 0 dB and 96 is ~-96 dB.
+constexpr uint8_t kDacVolumeMaxAttenuationCode = 96;
+
+// Register addresses used by this board profile.
+constexpr uint8_t kRegDacControl3 = 0x19;
+constexpr uint8_t kRegDacPower = 0x04;
+constexpr uint8_t kRegDacVolumeLeft = 0x1A;
+constexpr uint8_t kRegDacVolumeRight = 0x1B;
+constexpr uint8_t kRegSpeakerOutLeft = 0x2E;
+constexpr uint8_t kRegSpeakerOutRight = 0x2F;
+constexpr uint8_t kRegHeadphoneOutLeft = 0x30;
+constexpr uint8_t kRegHeadphoneOutRight = 0x31;
+
 TwoWire gCodecWire(1);
 
 bool codecWrite(uint8_t reg, uint8_t val) {
-  gCodecWire.beginTransmission(ES8388_ADDR);
+  gCodecWire.beginTransmission(kEs8388Addr);
   gCodecWire.write(reg);
   gCodecWire.write(val);
   return gCodecWire.endTransmission() == 0;
 }
 
 bool codecRead(uint8_t reg, uint8_t &val) {
-  gCodecWire.beginTransmission(ES8388_ADDR);
+  gCodecWire.beginTransmission(kEs8388Addr);
   gCodecWire.write(reg);
   if (gCodecWire.endTransmission(false) != 0) return false;
-  if (gCodecWire.requestFrom((uint8_t)ES8388_ADDR, (uint8_t)1) != 1) return false;
+  if (gCodecWire.requestFrom(static_cast<uint8_t>(kEs8388Addr), static_cast<uint8_t>(1)) != 1) {
+    return false;
+  }
   val = gCodecWire.read();
   return true;
 }
 
 void setHeadphoneVolume(uint8_t percent) {
-  uint8_t p = constrain(percent, 0, 100);
-  uint8_t v = (uint8_t)((0x21UL * p) / 100UL);
-  codecWrite(0x30, v);
-  codecWrite(0x31, v);
+  const uint8_t clamped = constrain(percent, 0, 100);
+  const uint8_t code = static_cast<uint8_t>((kAnalogOutputVolumeMaxCode * clamped) / 100U);
+  codecWrite(kRegHeadphoneOutLeft, code);
+  codecWrite(kRegHeadphoneOutRight, code);
 }
 
 void setSpeakerVolume(uint8_t percent) {
-  uint8_t p = constrain(percent, 0, 100);
-  uint8_t v = (uint8_t)((0x21UL * p) / 100UL);
-  codecWrite(0x2E, v);
-  codecWrite(0x2F, v);
+  const uint8_t clamped = constrain(percent, 0, 100);
+  const uint8_t code = static_cast<uint8_t>((kAnalogOutputVolumeMaxCode * clamped) / 100U);
+  codecWrite(kRegSpeakerOutLeft, code);
+  codecWrite(kRegSpeakerOutRight, code);
 }
 
 void setMainDacVolume(uint8_t percent) {
-  uint8_t p = constrain(percent, 0, 100);
-  uint8_t v = (uint8_t)(96UL - ((96UL * p) / 100UL));
-  codecWrite(0x1A, v);
-  codecWrite(0x1B, v);
+  const uint8_t clamped = constrain(percent, 0, 100);
+  const uint8_t attenuationCode =
+      static_cast<uint8_t>(kDacVolumeMaxAttenuationCode -
+                           ((kDacVolumeMaxAttenuationCode * clamped) / 100U));
+  codecWrite(kRegDacVolumeLeft, attenuationCode);
+  codecWrite(kRegDacVolumeRight, attenuationCode);
 }
 
 void unmuteOutputs() {
-  uint8_t v = 0;
-  if (codecRead(0x19, v)) codecWrite(0x19, (uint8_t)(v & ~(1 << 2)));
-  if (codecRead(0x04, v)) codecWrite(0x04, (uint8_t)(v | (3 << 4) | (3 << 2)));
+  uint8_t value = 0;
+  if (codecRead(kRegDacControl3, value)) {
+    // Clear DAC soft-mute bit.
+    codecWrite(kRegDacControl3, static_cast<uint8_t>(value & ~(1U << 2)));
+  }
+  if (codecRead(kRegDacPower, value)) {
+    // Enable DAC output drivers routed to both output mixers.
+    codecWrite(kRegDacPower, static_cast<uint8_t>(value | (3U << 4) | (3U << 2)));
+  }
 }
 
 }  // namespace
@@ -58,29 +85,54 @@ void unmuteOutputs() {
 namespace CodecES8388 {
 
 bool init() {
-  gCodecWire.begin(Pins::I2C_SDA, Pins::I2C_SCL, 400000U);
-  gCodecWire.beginTransmission(ES8388_ADDR);
+  gCodecWire.begin(Pins::I2C_SDA, Pins::I2C_SCL, kCodecI2cClockHz);
+  gCodecWire.beginTransmission(kEs8388Addr);
   if (gCodecWire.endTransmission() != 0) {
-    
     return false;
   }
 
+  // Board-validated ES8388 startup profile.
   const uint8_t initSeq[][2] = {
-      {0x19, 0x04}, {0x01, 0x50}, {0x02, 0x00}, {0x08, 0x00}, {0x04, 0x3e},
-      {0x00, 0x12}, {0x17, 0x18}, {0x18, 0x02}, {0x26, 0x1B}, {0x27, 0x90},
-      {0x2A, 0x90}, {0x2B, 0x80}, {0x2D, 0x00}, {0x1B, 0x00}, {0x1A, 0x00},
-      {0x03, 0xff}, {0x09, 0x88}, {0x0a, 0xf0}, {0x0b, 0x80}, {0x0c, 0x0e},
-      {0x0d, 0x02}, {0x10, 0x20}, {0x11, 0x20}, {0x2e, 0x1e}, {0x2f, 0x1e},
-      {0x30, 0x1e}, {0x31, 0x1e}, {0x04, 0x3c}, {0x19, 0x00}, {0x03, 0x00}};
+      {kRegDacControl3, 0x04},  // Keep DAC soft-muted during clock and route setup.
+      {0x01, 0x50},             // Control1: use board MCLK setup profile.
+      {0x02, 0x00},             // Chip power: enable core analog/digital blocks.
+      {0x08, 0x00},             // Master mode control: codec in slave timing mode.
+      {kRegDacPower, 0x3E},     // DAC power/routing pre-configuration.
+      {0x00, 0x12},             // Control2: board-specific clock source bits.
+      {0x17, 0x18},             // ADC control: input PGA gain/routing profile.
+      {0x18, 0x02},             // ADC control: data format and serial clock edge.
+      {0x26, 0x1B},             // DAC serial: I2S framing/word length setup.
+      {0x27, 0x90},             // DAC control: de-emphasis and soft-ramp profile.
+      {0x2A, 0x90},             // DAC mixer: right-channel route profile.
+      {0x2B, 0x80},             // DAC mixer: left-channel route profile.
+      {0x2D, 0x00},             // DAC limiter/ALC disabled for transparent playback.
+      {kRegDacVolumeRight, 0x00},   // Start DAC digital volume at 0 dB.
+      {kRegDacVolumeLeft, 0x00},    // Start DAC digital volume at 0 dB.
+      {0x03, 0xFF},             // ADC power: temporary reset mask before final enable.
+      {0x09, 0x88},             // ADC digital format: I2S 16-bit board profile.
+      {0x0A, 0xF0},             // ADC input selection and PGA source mapping.
+      {0x0B, 0x80},             // ADC control: enable high-pass/offset cancellation path.
+      {0x0C, 0x0E},             // ADC control: gain/boost profile used by this hardware.
+      {0x0D, 0x02},             // ADC control: mono/stereo path and clock divider profile.
+      {0x10, 0x20},             // ADC digital volume left channel default.
+      {0x11, 0x20},             // ADC digital volume right channel default.
+      {kRegSpeakerOutLeft, 0x1E},   // Speaker output analog gain baseline.
+      {kRegSpeakerOutRight, 0x1E},  // Speaker output analog gain baseline.
+      {kRegHeadphoneOutLeft, 0x1E}, // Headphone analog gain baseline.
+      {kRegHeadphoneOutRight, 0x1E},// Headphone analog gain baseline.
+      {kRegDacPower, 0x3C},     // Final DAC output path enable mask.
+      {kRegDacControl3, 0x00},  // Clear soft-mute after initialization.
+      {0x03, 0x00},             // Final ADC power enable state.
+  };
 
   for (size_t i = 0; i < sizeof(initSeq) / sizeof(initSeq[0]); i++) {
     if (!codecWrite(initSeq[i][0], initSeq[i][1])) {
-      
       return false;
     }
   }
 
 #ifdef FUNC_GPIO0_CLK_OUT1
+  // Route internal clock to GPIO0; used as MCLK source for some ES8388 board revisions.
   PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
 #endif
   WRITE_PERI_REG(PIN_CTRL, 0xFFF0);
@@ -92,13 +144,6 @@ bool init() {
   setMainDacVolume(100);
   setHeadphoneVolume(100);
   setSpeakerVolume(100);
-
-  uint8_t hpL = 0;
-  uint8_t hpR = 0;
-  uint8_t mainL = 0;
-  if (codecRead(0x30, hpL) && codecRead(0x31, hpR) && codecRead(0x1A, mainL)) {
-    
-  }
 
   return true;
 }

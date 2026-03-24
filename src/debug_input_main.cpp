@@ -72,7 +72,7 @@ int8_t quadratureDelta(uint8_t prev, uint8_t current) {
 
 void logEvent(const String &eventText) {
   gLastEvent = eventText;
-  
+
 }
 
 void renderDisplay() {
@@ -114,18 +114,14 @@ bool initDisplay() {
 }
 
 bool initMcp() {
-  
-  
+
   bool foundAny = false;
   for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
     Wire.beginTransmission(addr);
     if (Wire.endTransmission() == 0) {
-      
+
       foundAny = true;
     }
-  }
-  if (!foundAny) {
-    
   }
 
   bool mcpFound = false;
@@ -138,26 +134,24 @@ bool initMcp() {
     }
   }
   if (!mcpFound) {
-    
+
     return false;
   }
-  
 
   if (!mcpWriteReg(kRegIodirA, 0xFF)) {
-    
+
     return false;
   }
   if (!mcpWriteReg(kRegGppuA, 0xFF)) {
-    
+
     return false;
   }
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) {
-    
+
     return false;
   }
-  
 
   const unsigned long now = millis();
   for (int i = 0; i < kNumEncoders; i++) {
@@ -213,16 +207,12 @@ void processInputs() {
 }  // namespace
 
 void setup() {
-  
+
   delay(200);
-  
-  
 
   gDisplayReady = initDisplay();
-  
 
   const bool mcpReady = initMcp();
-  
 
   if (!mcpReady) {
     logEvent("MCP error");

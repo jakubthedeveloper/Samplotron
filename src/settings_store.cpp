@@ -1,5 +1,4 @@
 #include "settings_store.h"
-#include "debug_flags.h"
 
 #include <Arduino.h>
 #include <SD.h>
@@ -256,34 +255,6 @@ bool saveToSd(const SamplerSettings &settings) {
     return false;
   }
 
-  return true;
-}
-
-bool logRawJsonFromSd() {
-  if (!DebugFlags::kEnableDebugLogs) {
-    return true;
-  }
-
-  
-  if (!SD.exists(kSettingsPath)) {
-    
-    
-    return false;
-  }
-
-  File file = SD.open(kSettingsPath, FILE_READ);
-  if (!file) {
-    
-    
-    return false;
-  }
-
-  while (file.available()) {
-    String line = file.readStringUntil('\n');
-    
-  }
-  file.close();
-  
   return true;
 }
 

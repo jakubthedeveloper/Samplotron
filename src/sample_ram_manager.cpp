@@ -1,5 +1,4 @@
 #include "sample_ram_manager.h"
-#include "debug_flags.h"
 
 #include <SD.h>
 #include <esp_heap_caps.h>
@@ -22,17 +21,6 @@ uint32_t gPoolCapacity = 0;
 LoadedEntry gLoadedEntries[SettingsStore::SamplerSettings::kMaxAssignments];
 bool gPoolBudgetLocked = false;
 uint32_t gFixedPoolBudget = 0;
-
-void logPoolDiagnostics(uint32_t budgetBytes) {
-  if (!DebugFlags::kEnableDebugLogs) {
-    return;
-  }
-  const size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-  const size_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-  const size_t free8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-  const size_t largest8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  
-}
 
 uint32_t readLe32(const uint8_t *buf) {
   return static_cast<uint32_t>(buf[0]) | (static_cast<uint32_t>(buf[1]) << 8) |
@@ -188,13 +176,9 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
   }
 
   clearLoadedEntries();
-  logPoolDiagnostics(gFixedPoolBudget);
   if (!allocatePool(gFixedPoolBudget)) {
     report.allocatedBytes = 0;
     report.fallbackToStreamCount = report.requestedRamCount;
-    if (DebugFlags::kEnableDebugLogs) {
-      
-    }
     return false;
   }
   report.allocatedBytes = gPoolCapacity;

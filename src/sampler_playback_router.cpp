@@ -1,7 +1,6 @@
 #include "sampler_playback_router.h"
 
 #include "active_sample_registry.h"
-#include "debug_flags.h"
 #include "sample_ram_manager.h"
 
 void SamplerPlaybackRouter::begin(Ui *ui,
@@ -18,10 +17,6 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   if (!ui_ || !catalog_ || !triggerEngine_) return;
   if (sampleIndex < 0 || sampleIndex >= catalog_->count) return;
 
-  if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-    
-  }
-
   TriggerEvent event;
   event.source = TriggerSourceType::StreamPath;
   event.isPreview = true;
@@ -31,27 +26,20 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   const String &path = catalog_->paths[sampleIndex];
   path.toCharArray(event.path, sizeof(event.path));
 
-  if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
-    
-  }
+  triggerEngine_->enqueue(event);
 }
 
 void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   if (!ui_ || !catalog_ || !runtime_ || !triggerEngine_) return;
 
   if (ui_->panicMidiNote() == midiNote) {
-    if (!triggerEngine_->panicAll() && DebugFlags::kEnableDebugLogs) {
-      
-    }
+    triggerEngine_->panicAll();
     return;
   }
 
   const int sampleIndex = ui_->assignedSampleForMidiNote(midiNote);
   if (sampleIndex < 0 || sampleIndex >= catalog_->count) {
     ui_->clearTriggeredSample();
-    if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-      
-    }
     return;
   }
 
@@ -64,9 +52,6 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
 
   if (hasPreparedEntry &&
       entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Unavailable) {
-    if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-      
-    }
     return;
   }
 
@@ -87,22 +72,8 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
       event.bitsPerSample = classified->bitsPerSample;
       const bool played = triggerEngine_->enqueue(event);
       if (played) {
-        if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-          
-        }
         return;
       }
-      if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-        
-      }
-    }
-  }
-
-  if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-    if (hasPreparedEntry) {
-      
-    } else {
-      
     }
   }
 
@@ -112,9 +83,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
   event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
   assignedPath.toCharArray(event.path, sizeof(event.path));
-  if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
-    
-  }
+  triggerEngine_->enqueue(event);
 }
 
 void SamplerPlaybackRouter::onPlaybackModeChanged(Ui::PlaybackMode mode, int sampleIndex) const {
@@ -122,12 +91,8 @@ void SamplerPlaybackRouter::onPlaybackModeChanged(Ui::PlaybackMode mode, int sam
   if (sampleIndex < 0) return;
   const int16_t groupId = static_cast<int16_t>(sampleIndex);
   if (mode == Ui::PlaybackMode::Loop) {
-    if (!triggerEngine_->setLoopEnabledForGroup(groupId, true) && DebugFlags::kEnableDebugLogs) {
-      
-    }
+    triggerEngine_->setLoopEnabledForGroup(groupId, true);
     return;
   }
-  if (!triggerEngine_->stopLoopingVoicesForGroup(groupId) && DebugFlags::kEnableDebugLogs) {
-    
-  }
+  triggerEngine_->stopLoopingVoicesForGroup(groupId);
 }

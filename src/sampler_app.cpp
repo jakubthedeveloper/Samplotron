@@ -6,7 +6,6 @@
 #include <freertos/task.h>
 
 #include "codec_es8388.h"
-#include "debug_flags.h"
 #include "storage_sd.h"
 
 namespace {
@@ -44,32 +43,20 @@ void SamplerApp::setup() {
     return;
   }
   if (!requestLoaderRebuildAndWait(8000)) {
-    
     return;
   }
   renderBootScreen(false);
   prepareCallbacksAndBootFlow();
-  
 }
 
 void SamplerApp::initializePlatform() {
-  
   delay(200);
-  
-  
 }
 
 void SamplerApp::initializeHardware() {
-  if (!CodecES8388::init()) {
-    
-  } else {
-    
-  }
+  CodecES8388::init();
 
-  if (!display_.begin()) {
-    
-  } else {
-    
+  if (display_.begin()) {
     display_.renderStartupMessage(startupTitleForResetReason(), "Please wait...");
   }
 }
@@ -87,13 +74,11 @@ void SamplerApp::loadStorageAndSettings() {
     SampleLibrary::loadFromSd(catalog_);
     renderBootScreen(true);
     runtime_.loadSettingsFromSd();
-    renderBootScreen(true);
   } else {
-    
     SampleLibrary::clear(catalog_);
     runtime_.applyDefaultSettings();
-    renderBootScreen(true);
   }
+  renderBootScreen(true);
 }
 
 void SamplerApp::initializeInteractiveModules() {
@@ -119,13 +104,11 @@ void SamplerApp::prepareCallbacksAndBootFlow() {
 bool SamplerApp::startTasks() {
   loaderCommandQueue_ = xQueueCreate(kLoaderCommandQueueLength, sizeof(LoaderCommand));
   if (!loaderCommandQueue_) {
-    
     return false;
   }
 
   uiStatusQueue_ = xQueueCreate(kUiStatusQueueLength, sizeof(UiStatusEvent));
   if (!uiStatusQueue_) {
-    
     return false;
   }
 
@@ -147,7 +130,6 @@ bool SamplerApp::startTasks() {
                                                            &loaderTaskHandle_,
                                                            kLoaderTaskCore);
   if (loaderTaskOk != pdPASS) {
-    
     return false;
   }
 
@@ -159,7 +141,6 @@ bool SamplerApp::startTasks() {
                                                        &uiTaskHandle_,
                                                        kUiTaskCore);
   if (uiTaskOk != pdPASS) {
-    
     return false;
   }
   return true;
@@ -187,7 +168,6 @@ void SamplerApp::loaderTaskEntry(void *param) {
 }
 
 void SamplerApp::runLoaderTask() {
-  
   if (!loaderCommandQueue_ || !uiStatusQueue_) {
     vTaskDelete(nullptr);
     return;
@@ -244,25 +224,12 @@ void SamplerApp::processLoaderCommand(const LoaderCommand &command) {
     status.ramSampleCount = static_cast<uint32_t>(runtime_.ramSampleCount());
     status.streamSampleCount = static_cast<uint32_t>(runtime_.streamSampleCount());
     status.sampleRamUsedBytes = runtime_.sampleRamUsedBytes();
-
-    
   }
-  if (xQueueSend(uiStatusQueue_, &status, pdMS_TO_TICKS(20)) != pdTRUE) {
-    
-  }
+  (void)xQueueSend(uiStatusQueue_, &status, pdMS_TO_TICKS(20));
 }
 
 void SamplerApp::runUiTask() {
-  
-  uint32_t lastRamDiagMs = 0;
   while (true) {
-    if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnableRuntimeRamUsageLogs) {
-      const uint32_t nowMs = millis();
-      if ((nowMs - lastRamDiagMs) >= DebugFlags::kRuntimeRamUsageLogIntervalMs) {
-        lastRamDiagMs = nowMs;
-        
-      }
-    }
     midi_.update();
     callbackBinder_.pollInput(input_);
     ui_.update();

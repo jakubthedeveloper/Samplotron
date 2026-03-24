@@ -55,6 +55,7 @@ uint8_t Midi::expectedDataBytes(uint8_t status) const {
     case 0x90:
     case 0xA0:
     case 0xB0:
+    // Consume pitch bend bytes to keep parser framing correct; event is ignored in processShortMessage.
     case 0xE0:
       return 2;
     case 0xC0:
