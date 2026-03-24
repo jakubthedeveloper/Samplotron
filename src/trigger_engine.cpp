@@ -4,7 +4,7 @@ namespace {
 
 constexpr TickType_t kIdleWaitTick = pdMS_TO_TICKS(1);
 constexpr size_t kQueueFilterCapacity = 32;
-constexpr uint32_t kPanicFadeOutUs = 1500;
+constexpr uint32_t kPanicFadeOutUs = 12000;
 
 bool isPlaybackEvent(const TriggerEvent &event) {
   return event.source == TriggerSourceType::StreamPath || event.source == TriggerSourceType::RamData;

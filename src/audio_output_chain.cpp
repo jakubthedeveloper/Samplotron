@@ -141,7 +141,52 @@ BudgetedAudioOutput::BudgetedAudioOutput(AudioOutput *sink) : sink_(sink) {}
 
 void BudgetedAudioOutput::resetBudget(uint16_t sampleCount) { budgetSamples_ = sampleCount; }
 
-bool BudgetedAudioOutput::SetRate(int hz) { return sink_ && sink_->SetRate(hz); }
+void BudgetedAudioOutput::resetFadeEnvelope() {
+  fadeEnvelopeQ15_ = 32768;
+  fadeStepQ15_ = 0;
+  fadeSamplesRemaining_ = 0;
+  fadeActive_ = false;
+  fadeComplete_ = false;
+}
+
+void BudgetedAudioOutput::beginFadeOut(uint32_t fadeOutUs) {
+  if (fadeOutUs == 0) {
+    fadeEnvelopeQ15_ = 0;
+    fadeStepQ15_ = 0;
+    fadeSamplesRemaining_ = 0;
+    fadeActive_ = false;
+    fadeComplete_ = true;
+    return;
+  }
+
+  if (sampleRateHz_ <= 0) {
+    sampleRateHz_ = 44100;
+  }
+
+  uint64_t fadeSamples =
+      (static_cast<uint64_t>(sampleRateHz_) * static_cast<uint64_t>(fadeOutUs) + 999999ULL) /
+      1000000ULL;
+  if (fadeSamples == 0) {
+    fadeSamples = 1;
+  }
+
+  fadeSamplesRemaining_ = static_cast<uint32_t>(fadeSamples);
+  fadeStepQ15_ = (fadeSamplesRemaining_ > 0) ? (fadeEnvelopeQ15_ / fadeSamplesRemaining_) : fadeEnvelopeQ15_;
+  if (fadeStepQ15_ == 0 && fadeEnvelopeQ15_ > 0) {
+    fadeStepQ15_ = 1;
+  }
+  fadeActive_ = true;
+  fadeComplete_ = false;
+}
+
+bool BudgetedAudioOutput::isFadeOutComplete() const { return fadeComplete_; }
+
+bool BudgetedAudioOutput::SetRate(int hz) {
+  if (hz > 0) {
+    sampleRateHz_ = hz;
+  }
+  return sink_ && sink_->SetRate(hz);
+}
 
 bool BudgetedAudioOutput::SetChannels(int channels) { return sink_ && sink_->SetChannels(channels); }
 
@@ -149,6 +194,7 @@ bool BudgetedAudioOutput::begin() { return sink_ && sink_->begin(); }
 
 bool BudgetedAudioOutput::stop() {
   budgetSamples_ = 0;
+  resetFadeEnvelope();
   return sink_ && sink_->stop();
 }
 
@@ -156,6 +202,33 @@ bool BudgetedAudioOutput::loop() { return sink_ && sink_->loop(); }
 
 bool BudgetedAudioOutput::ConsumeSample(int16_t sample[2]) {
   if (!sink_ || budgetSamples_ == 0) return false;
+
+  uint32_t envelopeQ15 = fadeEnvelopeQ15_;
+  if (fadeActive_) {
+    envelopeQ15 = fadeEnvelopeQ15_;
+    if (fadeSamplesRemaining_ > 0) {
+      if (fadeEnvelopeQ15_ > fadeStepQ15_) {
+        fadeEnvelopeQ15_ -= fadeStepQ15_;
+      } else {
+        fadeEnvelopeQ15_ = 0;
+      }
+      fadeSamplesRemaining_--;
+    }
+    if (fadeSamplesRemaining_ == 0) {
+      fadeEnvelopeQ15_ = 0;
+      fadeStepQ15_ = 0;
+      fadeActive_ = false;
+      fadeComplete_ = true;
+    }
+  }
+
+  if (envelopeQ15 < 32768U) {
+    const int32_t left = (static_cast<int32_t>(sample[0]) * static_cast<int32_t>(envelopeQ15) + 16384) >> 15;
+    const int32_t right = (static_cast<int32_t>(sample[1]) * static_cast<int32_t>(envelopeQ15) + 16384) >> 15;
+    sample[0] = static_cast<int16_t>(left);
+    sample[1] = static_cast<int16_t>(right);
+  }
+
   budgetSamples_--;
   return sink_->ConsumeSample(sample);
 }

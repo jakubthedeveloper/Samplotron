@@ -28,7 +28,10 @@ constexpr uint16_t kVoiceLoopSampleBudget = 96;
 // Short anti-click fade only when retriggering an active group.
 constexpr uint32_t kRetriggerFadeInUs = 800;
 // Retriggered voices from the same group are softly cut to avoid clicks.
-constexpr uint32_t kRetriggerFadeOutUs = 1200;
+// Keep this short to avoid audible comb/distortion from long overlap of the same sample.
+constexpr uint32_t kRetriggerFadeOutUs = 6000;
+// Default soft stop time used by control-path stop commands.
+constexpr uint32_t kDefaultStopFadeOutUs = 9000;
 
 enum class VoiceSourceType : uint8_t {
   None,
@@ -77,6 +80,9 @@ class BudgetedAudioOutput : public AudioOutput {
   explicit BudgetedAudioOutput(AudioOutput *sink);
 
   void resetBudget(uint16_t sampleCount);
+  void resetFadeEnvelope();
+  void beginFadeOut(uint32_t fadeOutUs);
+  bool isFadeOutComplete() const;
 
   bool SetRate(int hz) override;
   bool SetChannels(int channels) override;
@@ -88,6 +94,12 @@ class BudgetedAudioOutput : public AudioOutput {
  private:
   AudioOutput *sink_ = nullptr;
   uint16_t budgetSamples_ = 0;
+  int sampleRateHz_ = 44100;
+  uint32_t fadeEnvelopeQ15_ = 32768;
+  uint32_t fadeStepQ15_ = 0;
+  uint32_t fadeSamplesRemaining_ = 0;
+  bool fadeActive_ = false;
+  bool fadeComplete_ = false;
 };
 
 struct WaveformCaptureState {

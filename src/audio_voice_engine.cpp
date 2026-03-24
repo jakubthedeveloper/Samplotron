@@ -61,6 +61,7 @@ float gainFromVolume(uint8_t volume) {
 void stopVoice(VoiceState &voice) {
   if (voice.budgetedOut) {
     voice.budgetedOut->resetBudget(0);
+    voice.budgetedOut->resetFadeEnvelope();
   }
   if (voice.stub) {
     voice.stub->SetGain(0.0f);
@@ -107,6 +108,9 @@ void requestVoiceStop(VoiceState &voice, uint32_t fadeOutUs) {
     if (fadeOutUs < voice.fadeOutUs) {
       voice.fadeOutUs = fadeOutUs;
       voice.stopStartUs = micros();
+      if (voice.budgetedOut) {
+        voice.budgetedOut->beginFadeOut(fadeOutUs);
+      }
     }
     return;
   }
@@ -114,6 +118,9 @@ void requestVoiceStop(VoiceState &voice, uint32_t fadeOutUs) {
   voice.stopping = true;
   voice.stopStartUs = micros();
   voice.fadeOutUs = fadeOutUs;
+  if (voice.budgetedOut) {
+    voice.budgetedOut->beginFadeOut(fadeOutUs);
+  }
   // Keep stop deterministic: no loop restart while voice is tailing out.
   voice.loopEnabled = false;
 }
@@ -152,9 +159,15 @@ void updateDynamicMixGain(EngineState *impl, uint32_t nowUs) {
 
 void updateVoiceGain(VoiceState &voice, float dynamicMixGain, uint32_t nowUs) {
   if (!voice.active || !voice.stub) return;
+  if (voice.stopping) {
+    // During stop, keep mixer gain fixed and rely only on per-sample fade envelope.
+    // This avoids stepwise gain changes from dynamic mix updates ("zipper" artifacts).
+    return;
+  }
 
-  const float gain =
-      voice.targetGain * dynamicMixGain * voiceFadeInRatio(voice, nowUs) * voiceFadeOutRatio(voice, nowUs);
+  // Fade-out is handled sample-by-sample in BudgetedAudioOutput.
+  const float fadeOutRatio = voiceFadeOutRatio(voice, nowUs);
+  const float gain = voice.targetGain * dynamicMixGain * voiceFadeInRatio(voice, nowUs) * fadeOutRatio;
   if (fabsf(gain - voice.currentGain) < 0.0005f) return;
 
   voice.currentGain = gain;
@@ -261,6 +274,7 @@ bool beginVoiceFromPath(EngineState *impl,
   voice.stopStartUs = 0;
   voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
+  voice.budgetedOut->resetFadeEnvelope();
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();
@@ -314,6 +328,7 @@ bool beginVoiceFromRam(EngineState *impl,
   voice.stopStartUs = 0;
   voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
+  voice.budgetedOut->resetFadeEnvelope();
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();

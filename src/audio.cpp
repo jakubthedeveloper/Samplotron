@@ -130,9 +130,19 @@ void Audio::update() {
       continue;
     }
 
-    if (voice.stopping && voice.fadeOutUs > 0) {
-      const uint32_t fadeElapsedUs = nowUs - voice.stopStartUs;
-      if (fadeElapsedUs >= voice.fadeOutUs) {
+    if (voice.stopping) {
+      bool fadeDone = false;
+      if (voice.budgetedOut) {
+        fadeDone = voice.budgetedOut->isFadeOutComplete();
+      }
+      if (!fadeDone && voice.fadeOutUs > 0) {
+        // Fallback watchdog in case output path stalls and no samples are consumed.
+        const uint32_t fadeElapsedUs = nowUs - voice.stopStartUs;
+        if (fadeElapsedUs >= (voice.fadeOutUs + 50000U)) {
+          fadeDone = true;
+        }
+      }
+      if (fadeDone) {
         AudioInternal::stopVoice(voice);
         stateChanged = true;
         continue;
@@ -185,22 +195,23 @@ void Audio::playSamplePath(const String &samplePath,
     return;
   }
 
+  AudioInternal::requestStopVoicesForGroup(
+      impl_, retriggerGroupId, AudioInternal::kRetriggerFadeOutUs, voiceIndex);
+
   AudioInternal::refreshStats(impl_);
 }
 
 void Audio::stopAllVoices() {
   if (!impl_) return;
-  for (int i = 0; i < kVoiceCount; i++) {
-    AudioInternal::stopVoice(impl_->voices[i]);
+  if (AudioInternal::requestStopAllVoices(impl_, AudioInternal::kDefaultStopFadeOutUs)) {
+    AudioInternal::refreshStats(impl_);
   }
-  AudioInternal::refreshStats(impl_);
 }
 
 void Audio::fadeOutAllVoices(uint32_t fadeOutUs) {
   if (!impl_) return;
   if (fadeOutUs == 0) {
-    stopAllVoices();
-    return;
+    fadeOutUs = AudioInternal::kDefaultStopFadeOutUs;
   }
   if (AudioInternal::requestStopAllVoices(impl_, fadeOutUs)) {
     AudioInternal::refreshStats(impl_);
@@ -214,7 +225,7 @@ void Audio::stopLoopingVoicesForGroup(int16_t retriggerGroupId) {
     AudioInternal::VoiceState &voice = impl_->voices[i];
     if (!voice.active || !voice.loopEnabled) continue;
     if (voice.retriggerGroupId != retriggerGroupId) continue;
-    AudioInternal::stopVoice(voice);
+    AudioInternal::requestVoiceStop(voice, AudioInternal::kDefaultStopFadeOutUs);
     changed = true;
   }
   if (changed) {
@@ -264,6 +275,10 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                                                         retriggerGroupId,
                                                         loopEnabled,
                                                         fadeInUs);
+  if (started) {
+    AudioInternal::requestStopVoicesForGroup(
+        impl_, retriggerGroupId, AudioInternal::kRetriggerFadeOutUs, voiceIndex);
+  }
   AudioInternal::refreshStats(impl_);
   return started;
 }
