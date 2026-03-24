@@ -19,7 +19,7 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   if (sampleIndex < 0 || sampleIndex >= catalog_->count) return;
 
   if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-    Serial.printf("PLAY sample: %s\n", catalog_->names[sampleIndex].c_str());
+    
   }
 
   TriggerEvent event;
@@ -32,7 +32,7 @@ void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   path.toCharArray(event.path, sizeof(event.path));
 
   if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
-    Serial.println("Trigger queue full (preview dropped)");
+    
   }
 }
 
@@ -41,7 +41,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
 
   if (ui_->panicMidiNote() == midiNote) {
     if (!triggerEngine_->panicAll() && DebugFlags::kEnableDebugLogs) {
-      Serial.println("Trigger queue full (panic dropped)");
+      
     }
     return;
   }
@@ -50,7 +50,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   if (sampleIndex < 0 || sampleIndex >= catalog_->count) {
     ui_->clearTriggeredSample();
     if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-      Serial.printf("No assignment for MIDI note %d\n", midiNote);
+      
     }
     return;
   }
@@ -65,9 +65,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   if (hasPreparedEntry &&
       entry->effectiveMode == ActiveSampleRegistry::EffectiveStorageMode::Unavailable) {
     if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-      Serial.printf("Playback blocked for note=%d: unsupported or missing sample path=%s\n",
-                    midiNote,
-                    assignedPath.c_str());
+      
     }
     return;
   }
@@ -90,31 +88,21 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
       const bool played = triggerEngine_->enqueue(event);
       if (played) {
         if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-          Serial.printf("PLAY note=%d via RAM path=%s bytes=%lu\n",
-                        midiNote,
-                        entry->path.c_str(),
-                        static_cast<unsigned long>(loadedData.dataBytes));
+          
         }
         return;
       }
       if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
-        Serial.printf("RAM playback failed for note=%d, fallback to stream path=%s\n",
-                      midiNote,
-                      assignedPath.c_str());
+        
       }
     }
   }
 
   if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnablePerTriggerPlaybackLogs) {
     if (hasPreparedEntry) {
-      Serial.printf("PLAY note=%d via registry mode=%s path=%s\n",
-                    midiNote,
-                    ActiveSampleRegistry::effectiveStorageModeLabel(entry->effectiveMode),
-                    assignedPath.c_str());
+      
     } else {
-      Serial.printf("PLAY note=%d via UI assignment (unprepared), stream path=%s\n",
-                    midiNote,
-                    assignedPath.c_str());
+      
     }
   }
 
@@ -125,7 +113,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
   assignedPath.toCharArray(event.path, sizeof(event.path));
   if (!triggerEngine_->enqueue(event) && DebugFlags::kEnableDebugLogs) {
-    Serial.println("Trigger queue full (assigned trigger dropped)");
+    
   }
 }
 
@@ -135,11 +123,11 @@ void SamplerPlaybackRouter::onPlaybackModeChanged(Ui::PlaybackMode mode, int sam
   const int16_t groupId = static_cast<int16_t>(sampleIndex);
   if (mode == Ui::PlaybackMode::Loop) {
     if (!triggerEngine_->setLoopEnabledForGroup(groupId, true) && DebugFlags::kEnableDebugLogs) {
-      Serial.println("Trigger queue full (loop enable for sample dropped)");
+      
     }
     return;
   }
   if (!triggerEngine_->stopLoopingVoicesForGroup(groupId) && DebugFlags::kEnableDebugLogs) {
-    Serial.println("Trigger queue full (loop stop for sample dropped)");
+    
   }
 }

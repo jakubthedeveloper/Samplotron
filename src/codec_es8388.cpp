@@ -61,7 +61,7 @@ bool init() {
   gCodecWire.begin(Pins::I2C_SDA, Pins::I2C_SCL, 400000U);
   gCodecWire.beginTransmission(ES8388_ADDR);
   if (gCodecWire.endTransmission() != 0) {
-    Serial.println("ES8388 not found on I2C");
+    
     return false;
   }
 
@@ -75,7 +75,7 @@ bool init() {
 
   for (size_t i = 0; i < sizeof(initSeq) / sizeof(initSeq[0]); i++) {
     if (!codecWrite(initSeq[i][0], initSeq[i][1])) {
-      Serial.printf("ES8388 init failed at reg 0x%02X\n", initSeq[i][0]);
+      
       return false;
     }
   }
@@ -97,7 +97,7 @@ bool init() {
   uint8_t hpR = 0;
   uint8_t mainL = 0;
   if (codecRead(0x30, hpL) && codecRead(0x31, hpR) && codecRead(0x1A, mainL)) {
-    Serial.printf("Codec volume HP(L/R)=0x%02X/0x%02X MAIN=0x%02X\n", hpL, hpR, mainL);
+    
   }
 
   return true;

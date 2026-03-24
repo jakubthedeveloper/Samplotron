@@ -72,7 +72,7 @@ int8_t quadratureDelta(uint8_t prev, uint8_t current) {
 
 void logEvent(const String &eventText) {
   gLastEvent = eventText;
-  Serial.println(eventText);
+  
 }
 
 void renderDisplay() {
@@ -114,18 +114,18 @@ bool initDisplay() {
 }
 
 bool initMcp() {
-  Serial.printf("MCP bus pins: SDA=%d SCL=%d\n", kDebugSdaPin, kDebugSclPin);
-  Serial.println("I2C scan on MCP bus (0x03..0x77):");
+  
+  
   bool foundAny = false;
   for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
     Wire.beginTransmission(addr);
     if (Wire.endTransmission() == 0) {
-      Serial.printf("  - found device at 0x%02X\n", addr);
+      
       foundAny = true;
     }
   }
   if (!foundAny) {
-    Serial.println("  - no I2C devices found");
+    
   }
 
   bool mcpFound = false;
@@ -138,26 +138,26 @@ bool initMcp() {
     }
   }
   if (!mcpFound) {
-    Serial.println("MCP23017 not found at 0x20..0x27");
+    
     return false;
   }
-  Serial.printf("MCP23017 candidate address: 0x%02X\n", gMcpAddress);
+  
 
   if (!mcpWriteReg(kRegIodirA, 0xFF)) {
-    Serial.println("MCP write IODIRA failed");
+    
     return false;
   }
   if (!mcpWriteReg(kRegGppuA, 0xFF)) {
-    Serial.println("MCP write GPPUA failed");
+    
     return false;
   }
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) {
-    Serial.println("MCP read GPIOA failed");
+    
     return false;
   }
-  Serial.printf("MCP GPIOA initial: 0x%02X\n", gpioA);
+  
 
   const unsigned long now = millis();
   for (int i = 0; i < kNumEncoders; i++) {
@@ -213,16 +213,16 @@ void processInputs() {
 }  // namespace
 
 void setup() {
-  Serial.begin(115200);
+  
   delay(200);
-  Serial.println();
-  Serial.println("MCP23017 + OLED debug firmware");
+  
+  
 
   gDisplayReady = initDisplay();
-  Serial.println(gDisplayReady ? "OLED OK" : "OLED NOT FOUND");
+  
 
   const bool mcpReady = initMcp();
-  Serial.println(mcpReady ? "MCP23017 OK" : "MCP23017 NOT FOUND");
+  
 
   if (!mcpReady) {
     logEvent("MCP error");

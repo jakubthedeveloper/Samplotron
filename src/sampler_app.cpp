@@ -44,34 +44,32 @@ void SamplerApp::setup() {
     return;
   }
   if (!requestLoaderRebuildAndWait(8000)) {
-    Serial.println("Initial sample_loader rebuild failed");
+    
     return;
   }
   renderBootScreen(false);
   prepareCallbacksAndBootFlow();
-  Serial.println("Sampler ready");
+  
 }
 
 void SamplerApp::initializePlatform() {
-  Serial.begin(115200);
+  
   delay(200);
-  Serial.println("Booting Samplotron...");
-  Serial.printf("PSRAM: size=%u free=%u\n",
-                static_cast<unsigned int>(ESP.getPsramSize()),
-                static_cast<unsigned int>(ESP.getFreePsram()));
+  
+  
 }
 
 void SamplerApp::initializeHardware() {
   if (!CodecES8388::init()) {
-    Serial.println("Codec init failed");
+    
   } else {
-    Serial.println("Codec OK");
+    
   }
 
   if (!display_.begin()) {
-    Serial.println("Display init failed");
+    
   } else {
-    Serial.println("Display OK");
+    
     display_.renderStartupMessage(startupTitleForResetReason(), "Please wait...");
   }
 }
@@ -91,7 +89,7 @@ void SamplerApp::loadStorageAndSettings() {
     runtime_.loadSettingsFromSd();
     renderBootScreen(true);
   } else {
-    Serial.println("Continuing without SD (input/display debug still active).");
+    
     SampleLibrary::clear(catalog_);
     runtime_.applyDefaultSettings();
     renderBootScreen(true);
@@ -121,13 +119,13 @@ void SamplerApp::prepareCallbacksAndBootFlow() {
 bool SamplerApp::startTasks() {
   loaderCommandQueue_ = xQueueCreate(kLoaderCommandQueueLength, sizeof(LoaderCommand));
   if (!loaderCommandQueue_) {
-    Serial.println("sample_loader command queue creation failed");
+    
     return false;
   }
 
   uiStatusQueue_ = xQueueCreate(kUiStatusQueueLength, sizeof(UiStatusEvent));
   if (!uiStatusQueue_) {
-    Serial.println("UI status queue creation failed");
+    
     return false;
   }
 
@@ -149,7 +147,7 @@ bool SamplerApp::startTasks() {
                                                            &loaderTaskHandle_,
                                                            kLoaderTaskCore);
   if (loaderTaskOk != pdPASS) {
-    Serial.println("sample_loader task creation failed");
+    
     return false;
   }
 
@@ -161,7 +159,7 @@ bool SamplerApp::startTasks() {
                                                        &uiTaskHandle_,
                                                        kUiTaskCore);
   if (uiTaskOk != pdPASS) {
-    Serial.println("UI task creation failed");
+    
     return false;
   }
   return true;
@@ -189,9 +187,7 @@ void SamplerApp::loaderTaskEntry(void *param) {
 }
 
 void SamplerApp::runLoaderTask() {
-  Serial.printf("sample_loader started core=%d prio=%u\n",
-                static_cast<int>(xPortGetCoreID()),
-                static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+  
   if (!loaderCommandQueue_ || !uiStatusQueue_) {
     vTaskDelete(nullptr);
     return;
@@ -249,33 +245,22 @@ void SamplerApp::processLoaderCommand(const LoaderCommand &command) {
     status.streamSampleCount = static_cast<uint32_t>(runtime_.streamSampleCount());
     status.sampleRamUsedBytes = runtime_.sampleRamUsedBytes();
 
-    Serial.printf("sample_loader rebuild done assigned=%lu ram=%lu stream=%lu ram_used=%lu\n",
-                  static_cast<unsigned long>(status.assignedSamples),
-                  static_cast<unsigned long>(status.ramSampleCount),
-                  static_cast<unsigned long>(status.streamSampleCount),
-                  static_cast<unsigned long>(status.sampleRamUsedBytes));
+    
   }
   if (xQueueSend(uiStatusQueue_, &status, pdMS_TO_TICKS(20)) != pdTRUE) {
-    Serial.println("ui_status_queue full (loader status dropped)");
+    
   }
 }
 
 void SamplerApp::runUiTask() {
-  Serial.printf("ui_task started core=%d prio=%u\n",
-                static_cast<int>(xPortGetCoreID()),
-                static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+  
   uint32_t lastRamDiagMs = 0;
   while (true) {
     if (DebugFlags::kEnableDebugLogs && DebugFlags::kEnableRuntimeRamUsageLogs) {
       const uint32_t nowMs = millis();
       if ((nowMs - lastRamDiagMs) >= DebugFlags::kRuntimeRamUsageLogIntervalMs) {
         lastRamDiagMs = nowMs;
-        Serial.printf("RAM_DIAG heap_free=%u heap_min=%u heap_size=%u psram_free=%u psram_size=%u\n",
-                      static_cast<unsigned>(ESP.getFreeHeap()),
-                      static_cast<unsigned>(ESP.getMinFreeHeap()),
-                      static_cast<unsigned>(ESP.getHeapSize()),
-                      static_cast<unsigned>(ESP.getFreePsram()),
-                      static_cast<unsigned>(ESP.getPsramSize()));
+        
       }
     }
     midi_.update();

@@ -4,6 +4,7 @@ namespace {
 
 constexpr TickType_t kIdleWaitTick = pdMS_TO_TICKS(1);
 constexpr size_t kQueueFilterCapacity = 32;
+constexpr uint32_t kPanicFadeOutUs = 1500;
 
 bool isPlaybackEvent(const TriggerEvent &event) {
   return event.source == TriggerSourceType::StreamPath || event.source == TriggerSourceType::RamData;
@@ -21,7 +22,7 @@ bool TriggerEngine::begin(Audio *audio,
   uiStatusQueue_ = uiStatusQueue;
   triggerQueue_ = xQueueCreate(queueLength, sizeof(TriggerEvent));
   if (!triggerQueue_) {
-    Serial.println("Failed to create trigger queue");
+    
     return false;
   }
 
@@ -33,7 +34,7 @@ bool TriggerEngine::begin(Audio *audio,
                                                  &taskHandle_,
                                                  taskCore);
   if (ok != pdPASS) {
-    Serial.println("Audio task creation failed");
+    
     return false;
   }
 
@@ -111,9 +112,7 @@ void TriggerEngine::runAudioTask() {
   }
 
   audio_->begin();
-  Serial.printf("audio_task started core=%d prio=%u\n",
-                static_cast<int>(xPortGetCoreID()),
-                static_cast<unsigned>(uxTaskPriorityGet(nullptr)));
+  
   if (uiStatusQueue_) {
     UiStatusEvent event;
     event.source = UiStatusSource::AudioEngine;
@@ -154,10 +153,10 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
 
   if (event.source == TriggerSourceType::PanicAll) {
     if (triggerQueue_) {
-      // Panic semantics: stop immediately and clear pending trigger backlog.
+      // Panic semantics: clear pending trigger backlog and fade active voices quickly.
       xQueueReset(triggerQueue_);
     }
-    audio_->stopAllVoices();
+    audio_->fadeOutAllVoices(kPanicFadeOutUs);
     return;
   }
 

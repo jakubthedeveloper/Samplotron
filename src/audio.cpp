@@ -369,6 +369,8 @@ float smoothGain(float current, float target, uint32_t dtUs, uint32_t timeConsta
 constexpr uint16_t kVoiceLoopSampleBudget = 96;
 // Short anti-click fade only when retriggering an active group.
 constexpr uint32_t kRetriggerFadeInUs = 800;
+// Retriggered voices from the same group are softly cut to avoid clicks.
+constexpr uint32_t kRetriggerFadeOutUs = 1200;
 
 enum class VoiceSourceType : uint8_t {
   None,
@@ -392,6 +394,9 @@ struct Audio::Impl {
     float targetGain = 0.0f;  // Per-voice gain from sample volume (0..1), before dynamic mix gain.
     float currentGain = 0.0f;
     uint32_t fadeInUs = 0;
+    bool stopping = false;
+    uint32_t stopStartUs = 0;
+    uint32_t fadeOutUs = 0;
     uint8_t volume = 100;
     bool loopEnabled = false;
     VoiceSourceType sourceType = VoiceSourceType::None;
@@ -448,6 +453,9 @@ void stopVoice(Audio::Impl::Voice &voice) {
   voice.targetGain = 0.0f;
   voice.currentGain = 0.0f;
   voice.fadeInUs = 0;
+  voice.stopping = false;
+  voice.stopStartUs = 0;
+  voice.fadeOutUs = 0;
   voice.volume = 100;
   voice.loopEnabled = false;
   voice.sourceType = VoiceSourceType::None;
@@ -457,6 +465,28 @@ void stopVoice(Audio::Impl::Voice &voice) {
   voice.channelCount = 0;
   voice.sampleRate = 0;
   voice.bitsPerSample = 0;
+}
+
+void requestVoiceStop(Audio::Impl::Voice &voice, uint32_t fadeOutUs) {
+  if (!voice.active) return;
+  if (fadeOutUs == 0) {
+    stopVoice(voice);
+    return;
+  }
+
+  if (voice.stopping) {
+    if (fadeOutUs < voice.fadeOutUs) {
+      voice.fadeOutUs = fadeOutUs;
+      voice.stopStartUs = micros();
+    }
+    return;
+  }
+
+  voice.stopping = true;
+  voice.stopStartUs = micros();
+  voice.fadeOutUs = fadeOutUs;
+  // Keep stop deterministic: no loop restart while voice is tailing out.
+  voice.loopEnabled = false;
 }
 
 void refreshStats(Audio::Impl *impl) {
@@ -474,13 +504,25 @@ void refreshStats(Audio::Impl *impl) {
   }
 }
 
-float voiceFadeRatio(const Audio::Impl::Voice &voice, uint32_t nowUs) {
+float voiceFadeInRatio(const Audio::Impl::Voice &voice, uint32_t nowUs) {
   if (!voice.active) return 0.0f;
   if (voice.fadeInUs == 0) return 1.0f;
 
   const uint32_t elapsedUs = nowUs - voice.startUs;
   const float ratio = static_cast<float>(elapsedUs) / static_cast<float>(voice.fadeInUs);
   return (ratio > 1.0f) ? 1.0f : ratio;
+}
+
+float voiceFadeOutRatio(const Audio::Impl::Voice &voice, uint32_t nowUs) {
+  if (!voice.active) return 0.0f;
+  if (!voice.stopping) return 1.0f;
+  if (voice.fadeOutUs == 0) return 0.0f;
+
+  const uint32_t elapsedUs = nowUs - voice.stopStartUs;
+  if (elapsedUs >= voice.fadeOutUs) return 0.0f;
+
+  const float ratio = 1.0f - (static_cast<float>(elapsedUs) / static_cast<float>(voice.fadeOutUs));
+  return (ratio < 0.0f) ? 0.0f : ratio;
 }
 
 void updateDynamicMixGain(Audio::Impl *impl, uint32_t nowUs) {
@@ -503,7 +545,8 @@ void updateDynamicMixGain(Audio::Impl *impl, uint32_t nowUs) {
 void updateVoiceGain(Audio::Impl::Voice &voice, float dynamicMixGain, uint32_t nowUs) {
   if (!voice.active || !voice.stub) return;
 
-  const float gain = voice.targetGain * dynamicMixGain * voiceFadeRatio(voice, nowUs);
+  const float gain = voice.targetGain * dynamicMixGain * voiceFadeInRatio(voice, nowUs) *
+                     voiceFadeOutRatio(voice, nowUs);
   if (fabsf(gain - voice.currentGain) < 0.0005f) return;
 
   voice.currentGain = gain;
@@ -535,28 +578,7 @@ void maybeLogRuntimeDiagnostics(Audio::Impl *impl) {
   impl->lastDiagLogMs = nowMs;
 
   const StreamManager::Diagnostics &streamDiag = impl->streamManager.diagnostics();
-  Serial.printf("AUDIO_DIAG active=%u peak=%u steals=%lu loop_gap_max_us=%lu late_loops=%lu "
-                "play_max_us=%lu slow_plays=%lu play_count=%lu "
-                "rate_set_calls=%lu rate_set_skipped=%lu rate_set_applied=%lu "
-                "sd_reads=%lu sd_slow_reads=%lu sd_read_max_us=%lu sd_read_max_bytes=%lu "
-                "stream_refills=%lu sd_bytes=%lu\n",
-                static_cast<unsigned>(impl->stats.activeVoices),
-                static_cast<unsigned>(impl->stats.activeVoicePeak),
-                static_cast<unsigned long>(impl->stats.voiceStealCount),
-                static_cast<unsigned long>(impl->maxUpdateGapUs),
-                static_cast<unsigned long>(impl->lateUpdateCount),
-                static_cast<unsigned long>(impl->maxPlayUs),
-                static_cast<unsigned long>(impl->slowPlayCount),
-                static_cast<unsigned long>(impl->playCount),
-                static_cast<unsigned long>(impl->out ? impl->out->rateSetCalls() : 0),
-                static_cast<unsigned long>(impl->out ? impl->out->skippedRateSetCalls() : 0),
-                static_cast<unsigned long>(impl->out ? impl->out->appliedRateSetCalls() : 0),
-                static_cast<unsigned long>(streamDiag.sourceReadCount),
-                static_cast<unsigned long>(streamDiag.sourceSlowReadCount),
-                static_cast<unsigned long>(streamDiag.sourceMaxReadUs),
-                static_cast<unsigned long>(streamDiag.sourceMaxReadBytes),
-                static_cast<unsigned long>(streamDiag.bufferRefillCount),
-                static_cast<unsigned long>(streamDiag.sourceBytesRead));
+  
 }
 
 void recordPlayCost(Audio::Impl *impl, uint32_t elapsedUs) {
@@ -570,26 +592,30 @@ void recordPlayCost(Audio::Impl *impl, uint32_t elapsedUs) {
   }
 }
 
-bool stopActiveStreamVoices(Audio::Impl *impl) {
-  if (!impl) return false;
+bool requestStopVoicesForGroup(Audio::Impl *impl,
+                               int16_t retriggerGroupId,
+                               uint32_t fadeOutUs,
+                               int excludeVoiceIndex = -1) {
+  if (!impl || retriggerGroupId < 0) return false;
   bool changed = false;
   for (int i = 0; i < Audio::kVoiceCount; i++) {
+    if (i == excludeVoiceIndex) continue;
     Audio::Impl::Voice &voice = impl->voices[i];
-    if (!voice.active || voice.sourceType != VoiceSourceType::StreamPath) continue;
-    stopVoice(voice);
+    if (!voice.active) continue;
+    if (voice.retriggerGroupId != retriggerGroupId) continue;
+    requestVoiceStop(voice, fadeOutUs);
     changed = true;
   }
   return changed;
 }
 
-bool stopActiveStreamVoicesExceptGroup(Audio::Impl *impl, int16_t retriggerGroupId) {
+bool requestStopAllVoices(Audio::Impl *impl, uint32_t fadeOutUs) {
   if (!impl) return false;
   bool changed = false;
   for (int i = 0; i < Audio::kVoiceCount; i++) {
     Audio::Impl::Voice &voice = impl->voices[i];
-    if (!voice.active || voice.sourceType != VoiceSourceType::StreamPath) continue;
-    if (retriggerGroupId >= 0 && voice.retriggerGroupId == retriggerGroupId) continue;
-    stopVoice(voice);
+    if (!voice.active) continue;
+    requestVoiceStop(voice, fadeOutUs);
     changed = true;
   }
   return changed;
@@ -609,37 +635,36 @@ int allocateVoiceSlot(Audio::Impl *impl, int16_t retriggerGroupId, bool &voiceWa
   voiceWasStolen = false;
   if (!impl) return -1;
 
-  if (retriggerGroupId >= 0) {
-    for (int i = 0; i < Audio::kVoiceCount; i++) {
-      const Audio::Impl::Voice &voice = impl->voices[i];
-      if (voice.active && voice.retriggerGroupId == retriggerGroupId) {
-        return i;
-      }
-    }
-  }
-
   for (int i = 0; i < Audio::kVoiceCount; i++) {
     if (!impl->voices[i].active) {
       return i;
     }
   }
 
+  int oldestSameGroupIndex = -1;
+  uint32_t oldestSameGroupStartOrder = UINT32_MAX;
   int oldestIndex = -1;
   uint32_t oldestStartOrder = UINT32_MAX;
   for (int i = 0; i < Audio::kVoiceCount; i++) {
     const Audio::Impl::Voice &voice = impl->voices[i];
     if (!voice.active) continue;
+    if (retriggerGroupId >= 0 && voice.retriggerGroupId == retriggerGroupId &&
+        voice.startOrder < oldestSameGroupStartOrder) {
+      oldestSameGroupStartOrder = voice.startOrder;
+      oldestSameGroupIndex = i;
+    }
     if (voice.startOrder < oldestStartOrder) {
       oldestStartOrder = voice.startOrder;
       oldestIndex = i;
     }
   }
 
-  if (oldestIndex >= 0) {
+  const int stolenIndex = (oldestSameGroupIndex >= 0) ? oldestSameGroupIndex : oldestIndex;
+  if (stolenIndex >= 0) {
     voiceWasStolen = true;
     impl->stats.voiceStealCount++;
   }
-  return oldestIndex;
+  return stolenIndex;
 }
 
 bool beginVoiceFromPath(Audio::Impl *impl,
@@ -663,6 +688,9 @@ bool beginVoiceFromPath(Audio::Impl *impl,
   }
   voice.targetGain = gainFromVolume(volume);
   voice.fadeInUs = fadeInUs;
+  voice.stopping = false;
+  voice.stopStartUs = 0;
+  voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
@@ -713,6 +741,9 @@ bool beginVoiceFromRam(Audio::Impl *impl,
   voice.activeSource = voice.ramSource;
   voice.targetGain = gainFromVolume(volume);
   voice.fadeInUs = fadeInUs;
+  voice.stopping = false;
+  voice.stopStartUs = 0;
+  voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
@@ -745,7 +776,7 @@ bool restartVoiceLoop(Audio::Impl *impl, int voiceIndex) {
   if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
 
   const Audio::Impl::Voice &voice = impl->voices[voiceIndex];
-  if (!voice.loopEnabled) return false;
+  if (!voice.loopEnabled || voice.stopping) return false;
 
   const VoiceSourceType sourceType = voice.sourceType;
   const String path(voice.path);
@@ -820,14 +851,14 @@ void Audio::begin() {
 
   impl_ = new Impl();
   if (!impl_) {
-    Serial.println("Audio begin failed: no memory for state");
+    
     return;
   }
 
   impl_->out =
       new StableAudioOutputI2S(0, AudioOutputI2S::EXTERNAL_I2S, 8, AudioOutputI2S::APLL_ENABLE);
   if (!impl_->out) {
-    Serial.println("Audio begin failed: no memory for I2S output");
+    
     delete impl_;
     impl_ = nullptr;
     return;
@@ -837,7 +868,7 @@ void Audio::begin() {
 
   impl_->limitedOut = new SimpleLimiterAudioOutput(impl_->out, &impl_->waveformCapture);
   if (!impl_->limitedOut) {
-    Serial.println("Audio begin failed: no memory for limiter output");
+    
     delete impl_->limitedOut;
     impl_->limitedOut = nullptr;
     delete impl_->out;
@@ -849,7 +880,7 @@ void Audio::begin() {
 
   impl_->mixer = new AudioOutputMixer(kMixerBufferSamples, impl_->limitedOut);
   if (!impl_->mixer) {
-    Serial.println("Audio begin failed: no memory for mixer");
+    
     delete impl_->limitedOut;
     impl_->limitedOut = nullptr;
     delete impl_->out;
@@ -860,7 +891,7 @@ void Audio::begin() {
   }
 
   if (!impl_->streamManager.begin(kVoiceCount)) {
-    Serial.println("Audio begin failed: stream manager init failed");
+    
     delete impl_->mixer;
     impl_->mixer = nullptr;
     delete impl_->limitedOut;
@@ -886,13 +917,13 @@ void Audio::begin() {
       readyVoices++;
     } else {
       if (DebugFlags::kEnableDebugLogs) {
-        Serial.printf("Audio voice %d init failed\n", i);
+        
       }
     }
   }
 
   refreshStats(impl_);
-  Serial.printf("Audio voices ready: %d/%d\n", readyVoices, kVoiceCount);
+  
 }
 
 void Audio::update() {
@@ -917,6 +948,15 @@ void Audio::update() {
       continue;
     }
 
+    if (voice.stopping && voice.fadeOutUs > 0) {
+      const uint32_t fadeElapsedUs = nowUs - voice.stopStartUs;
+      if (fadeElapsedUs >= voice.fadeOutUs) {
+        stopVoice(voice);
+        stateChanged = true;
+        continue;
+      }
+    }
+
     if (voice.budgetedOut) {
       voice.budgetedOut->resetBudget(kVoiceLoopSampleBudget);
     }
@@ -924,7 +964,7 @@ void Audio::update() {
     updateVoiceGain(voice, impl_->dynamicMixGain, nowUs);
 
     if (!voice.wav->loop()) {
-      if (!voice.loopEnabled || !restartVoiceLoop(impl_, i)) {
+      if (voice.stopping || !voice.loopEnabled || !restartVoiceLoop(impl_, i)) {
         stopVoice(voice);
         stateChanged = true;
       }
@@ -950,37 +990,30 @@ void Audio::playSamplePath(const String &samplePath,
   const bool retriggeringGroup = hasActiveVoiceForGroup(impl_, retriggerGroupId);
   const uint32_t fadeInUs = retriggeringGroup ? kRetriggerFadeInUs : 0;
 
-  // In direct SD streaming mode, overlapping stream voices can stall responsiveness.
-  // Prefer immediate retrigger/preview response by interrupting older streamed voices.
-  const bool streamVoicesStopped =
-      retriggeringGroup ? stopActiveStreamVoicesExceptGroup(impl_, retriggerGroupId)
-                        : stopActiveStreamVoices(impl_);
-  if (streamVoicesStopped) {
-    refreshStats(impl_);
-  }
-
   bool voiceWasStolen = false;
   const int voiceIndex = allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
   if (voiceIndex < 0) {
-    Serial.println("No voice available");
+    
     recordPlayCost(impl_, micros() - playStartUs);
     return;
   }
 
   Impl::Voice &voice = impl_->voices[voiceIndex];
   if (voiceWasStolen && DebugFlags::kEnableDebugLogs) {
-    Serial.printf("VOICE_STEAL count=%lu slot=%d\n",
-                  static_cast<unsigned long>(impl_->stats.voiceStealCount),
-                  voiceIndex);
+    
   }
 
   stopVoice(voice);
   if (!beginVoiceFromPath(
           impl_, voiceIndex, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs)) {
-    Serial.println("Sample open/start failed");
+    
     refreshStats(impl_);
     recordPlayCost(impl_, micros() - playStartUs);
     return;
+  }
+
+  if (retriggeringGroup) {
+    requestStopVoicesForGroup(impl_, retriggerGroupId, kRetriggerFadeOutUs, voiceIndex);
   }
 
   refreshStats(impl_);
@@ -993,6 +1026,17 @@ void Audio::stopAllVoices() {
     stopVoice(impl_->voices[i]);
   }
   refreshStats(impl_);
+}
+
+void Audio::fadeOutAllVoices(uint32_t fadeOutUs) {
+  if (!impl_) return;
+  if (fadeOutUs == 0) {
+    stopAllVoices();
+    return;
+  }
+  if (requestStopAllVoices(impl_, fadeOutUs)) {
+    refreshStats(impl_);
+  }
 }
 
 void Audio::stopLoopingVoicesForGroup(int16_t retriggerGroupId) {
@@ -1042,9 +1086,7 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
 
   Impl::Voice &voice = impl_->voices[voiceIndex];
   if (voiceWasStolen && DebugFlags::kEnableDebugLogs) {
-    Serial.printf("VOICE_STEAL count=%lu slot=%d\n",
-                  static_cast<unsigned long>(impl_->stats.voiceStealCount),
-                  voiceIndex);
+    
   }
 
   stopVoice(voice);
@@ -1059,6 +1101,9 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                                          retriggerGroupId,
                                          loopEnabled,
                                          fadeInUs);
+  if (started && retriggeringGroup) {
+    requestStopVoicesForGroup(impl_, retriggerGroupId, kRetriggerFadeOutUs, voiceIndex);
+  }
   refreshStats(impl_);
   recordPlayCost(impl_, micros() - playStartUs);
   return started;

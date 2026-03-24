@@ -5,7 +5,7 @@
 
 class Audio {
  public:
-  static constexpr uint8_t kVoiceCount = 8;
+  static constexpr uint8_t kVoiceCount = 32;
   static constexpr uint16_t kWaveformPointCount = 128;
 
   struct RuntimeStats {
@@ -31,6 +31,7 @@ class Audio {
                       int16_t retriggerGroupId = -1,
                       bool loopEnabled = false);
   void stopAllVoices();
+  void fadeOutAllVoices(uint32_t fadeOutUs);
   void stopLoopingVoicesForGroup(int16_t retriggerGroupId);
   void setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled);
   bool playSampleRam(const uint8_t *pcmData,

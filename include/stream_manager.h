@@ -8,7 +8,7 @@ class AudioFileSource;
 
 class StreamManager {
  public:
-  static constexpr uint8_t kMaxStreams = 8;
+  static constexpr uint8_t kMaxStreams = 32;
 
   struct Diagnostics {
     uint32_t sourceReadCount = 0;

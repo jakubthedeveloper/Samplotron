@@ -40,7 +40,7 @@ void loadFromSd(Catalog &catalog) {
 
   File dir = SD.open("/samples");
   if (!dir || !dir.isDirectory()) {
-    Serial.println("Missing /samples directory");
+    
     return;
   }
 
@@ -63,7 +63,7 @@ void loadFromSd(Catalog &catalog) {
   dir.close();
 
   sortByName(catalog);
-  Serial.printf("Found %d sample(s)\n", catalog.count);
+  
 }
 
 int findIndexByPath(const Catalog &catalog, const String &path) {

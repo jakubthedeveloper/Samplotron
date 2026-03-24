@@ -20,7 +20,7 @@ void Midi::begin(Ui *ui) {
   runningStatus_ = 0;
   dataCount_ = 0;
   Serial2.begin(31250, SERIAL_8N1, Pins::MIDI_IN, -1);
-  Serial.printf("MIDI ready on GPIO%d @31250\n", Pins::MIDI_IN);
+  
 }
 
 void Midi::update() {

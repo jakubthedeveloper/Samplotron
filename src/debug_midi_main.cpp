@@ -46,25 +46,25 @@ void printShortMessage(uint8_t status, const uint8_t *data) {
   const int channel = (status & 0x0F) + 1;
 
   if (type == 0x90 && data[1] > 0) {
-    Serial.printf("NOTE_ON ch=%d note=%d vel=%d\n", channel, data[0], data[1]);
+    
     return;
   }
   if (type == 0x80 || (type == 0x90 && data[1] == 0)) {
-    Serial.printf("NOTE_OFF ch=%d note=%d vel=%d\n", channel, data[0], data[1]);
+    
     return;
   }
   if (type == 0xB0) {
-    Serial.printf("CC ch=%d cc=%d val=%d\n", channel, data[0], data[1]);
+    
     return;
   }
   if (type == 0xC0) {
-    Serial.printf("PROGRAM ch=%d num=%d\n", channel, data[0]);
+    
     return;
   }
   if (type == 0xE0) {
     const int bend = ((static_cast<int>(data[1]) << 7) | data[0]) - 8192;
     if (kLogPitchBend && gLastPitchBend[channel - 1] != bend) {
-      Serial.printf("PITCH_BEND ch=%d val=%d\n", channel, bend);
+      
     }
     gLastPitchBend[channel - 1] = bend;
     return;
@@ -72,17 +72,17 @@ void printShortMessage(uint8_t status, const uint8_t *data) {
 
   const uint8_t count = expectedDataBytes(status);
   if (count == 1) {
-    Serial.printf("MIDI status=0x%02X data=[%d]\n", status, data[0]);
+    
   } else if (count == 2) {
-    Serial.printf("MIDI status=0x%02X data=[%d,%d]\n", status, data[0], data[1]);
+    
   } else {
-    Serial.printf("MIDI status=0x%02X\n", status);
+    
   }
 }
 
 void handleMidiByte(uint8_t b) {
   if (b >= 0xF8) {
-    Serial.printf("RT status=0x%02X\n", b);
+    
     return;
   }
 
@@ -114,12 +114,12 @@ void handleMidiByte(uint8_t b) {
 }  // namespace
 
 void setup() {
-  Serial.begin(115200);
+  
   delay(200);
-  Serial.println();
-  Serial.println("MIDI debug firmware");
-  Serial.printf("Listening MIDI IN on GPIO%d at %lu bps\n", kMidiRxPin, kMidiBaud);
-  Serial.printf("Pitch bend logging: %s\n", kLogPitchBend ? "ON" : "OFF");
+  
+  
+  
+  
 
   Serial2.begin(kMidiBaud, SERIAL_8N1, kMidiRxPin, kMidiTxPin);
 }

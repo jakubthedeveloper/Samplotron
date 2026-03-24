@@ -23,21 +23,19 @@ bool SamplerSaveService::saveConfiguration() const {
     // Save should be reliable even if a loop is currently active.
     triggerEngine_->panicAll();
     if (!triggerEngine_->waitForIdle(1500)) {
-      Serial.println("Settings save deferred: audio still active");
+      
       return false;
     }
   }
 
   runtime_->collectAssignmentsFromUi(*ui_, *catalog_);
   if (!requestLoaderRebuildAndWait(5000)) {
-    Serial.println("Settings save failed: sample_loader rebuild timeout/error");
+    
     return false;
   }
 
   const bool ok = runtime_->saveSettingsToSd();
-  Serial.printf("Settings save: %s, assignments=%d\n",
-                ok ? "OK" : "FAILED",
-                runtime_->assignedSamplesCount());
+  
   return ok;
 }
 

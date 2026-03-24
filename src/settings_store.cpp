@@ -98,13 +98,13 @@ bool loadFromSd(SamplerSettings &settings) {
   applyDefaults(settings);
 
   if (!SD.exists(kSettingsPath)) {
-    Serial.printf("Settings file not found (%s), using defaults\n", kSettingsPath);
+    
     return false;
   }
 
   File file = SD.open(kSettingsPath, FILE_READ);
   if (!file) {
-    Serial.printf("Failed to open settings for read (%s)\n", kSettingsPath);
+    
     return false;
   }
 
@@ -113,7 +113,7 @@ bool loadFromSd(SamplerSettings &settings) {
   file.close();
 
   if (error) {
-    Serial.printf("Settings JSON parse error: %s\n", error.c_str());
+    
     return false;
   }
 
@@ -137,7 +137,7 @@ bool loadFromSd(SamplerSettings &settings) {
   if (!playbackModes.isNull()) {
     for (JsonObject modeEntry : playbackModes) {
       if (settings.playbackModeCount >= SamplerSettings::kMaxPlaybackModes) {
-        Serial.println("Too many sample playback modes in config, truncating");
+        
         break;
       }
 
@@ -160,7 +160,7 @@ bool loadFromSd(SamplerSettings &settings) {
   if (!assignments.isNull()) {
     for (JsonObject assignment : assignments) {
       if (settings.assignmentCount >= SamplerSettings::kMaxAssignments) {
-        Serial.println("Too many assignments in config, truncating");
+        
         break;
       }
 
@@ -228,12 +228,12 @@ bool saveToSd(const SamplerSettings &settings) {
   }
 
   if (!writeJsonToPath(kSettingsTempPath, gSettingsJsonDoc)) {
-    Serial.printf("Failed to write temporary settings file (%s)\n", kSettingsTempPath);
+    
     return false;
   }
 
   if (!verifyJsonAtPath(kSettingsTempPath)) {
-    Serial.printf("Temporary settings verification failed (%s)\n", kSettingsTempPath);
+    
     SD.remove(kSettingsTempPath);
     return false;
   }
@@ -241,18 +241,14 @@ bool saveToSd(const SamplerSettings &settings) {
   if (SD.exists(kSettingsPath)) {
     SD.remove(kSettingsBackupPath);
     if (!SD.rename(kSettingsPath, kSettingsBackupPath)) {
-      Serial.printf("Failed to create settings backup (%s -> %s)\n",
-                    kSettingsPath,
-                    kSettingsBackupPath);
+      
       SD.remove(kSettingsTempPath);
       return false;
     }
   }
 
   if (!SD.rename(kSettingsTempPath, kSettingsPath)) {
-    Serial.printf("Failed to activate temporary settings file (%s -> %s)\n",
-                  kSettingsTempPath,
-                  kSettingsPath);
+    
     if (SD.exists(kSettingsBackupPath)) {
       SD.rename(kSettingsBackupPath, kSettingsPath);
     }
@@ -268,26 +264,26 @@ bool logRawJsonFromSd() {
     return true;
   }
 
-  Serial.println("Settings JSON dump BEGIN");
+  
   if (!SD.exists(kSettingsPath)) {
-    Serial.printf("Settings JSON missing: %s\n", kSettingsPath);
-    Serial.println("Settings JSON dump END");
+    
+    
     return false;
   }
 
   File file = SD.open(kSettingsPath, FILE_READ);
   if (!file) {
-    Serial.printf("Failed to open settings for dump (%s)\n", kSettingsPath);
-    Serial.println("Settings JSON dump END");
+    
+    
     return false;
   }
 
   while (file.available()) {
     String line = file.readStringUntil('\n');
-    Serial.println(line);
+    
   }
   file.close();
-  Serial.println("Settings JSON dump END");
+  
   return true;
 }
 

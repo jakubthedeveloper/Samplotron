@@ -15,10 +15,11 @@ Architecture note: `src/main.cpp` is a thin entrypoint, while runtime orchestrat
 ## Current Features
 
 - WAV sample playback from `/samples` on SD.
-- 8-voice polyphony with deterministic oldest-voice stealing.
+- 32-voice polyphony with deterministic oldest-voice stealing.
+- Retrigger starts a new voice instance and softly fades older voices from the same sample group.
 - Playback format for assigned samples is enforced to WAV PCM16, 44.1kHz, mono.
 - Audio playback runs in a dedicated FreeRTOS task/core with trigger events passed by queue.
-- SD stream refill runs in a dedicated task; audio-domain stream reads are served from RAM read-ahead buffers.
+- SD and RAM playback share the same voice engine and mixer pipeline.
 - OLED UI with 2 encoders (via MCP23017).
 - On-device MIDI note to sample assignment.
 - Per-sample `SHOT/LOOP` playback mode (stored in config).
@@ -37,8 +38,6 @@ Architecture note: `src/main.cpp` is a thin entrypoint, while runtime orchestrat
 - optionally add `sampler_config.json` (if missing, firmware starts with defaults).
 3. Flash firmware:
 - `make upload-main`
-4. Open serial log:
-- `make monitor`
 
 ## Flashing Prebuilt Firmware (from GitHub Releases)
 

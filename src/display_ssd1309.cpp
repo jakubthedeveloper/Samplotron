@@ -58,7 +58,7 @@ bool DisplaySsd1309::begin() {
     return true;
   }
 
-  Serial.println("SSD1309 init failed after retries (tried 0x3C/0x3D)");
+  
   ready_ = false;
   return false;
 }

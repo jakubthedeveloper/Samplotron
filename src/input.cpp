@@ -68,28 +68,28 @@ void Input::begin() {
 
   uint8_t gpioA = 0;
   if (!mcpReadReg(kRegGpioA, gpioA)) {
-    Serial.println("MCP23017 not found on I2C");
+    
     ready_ = false;
     return;
   }
 
   // INTA/INTB mirrored, open-drain, active-low for reliable pull-up wiring.
   if (!mcpWriteReg(kRegIoCon, 0b01000100)) {
-    Serial.println("MCP23017 IOCON config failed");
+    
     ready_ = false;
     return;
   }
 
   // GPA0..GPA5 used: two encoders (A/B + switch).
   if (!mcpWriteReg(kRegIodirA, 0xFF) || !mcpWriteReg(kRegGppuA, 0xFF)) {
-    Serial.println("MCP23017 input config failed");
+    
     ready_ = false;
     return;
   }
 
   // Interrupt-on-change against previous pin value.
   if (!mcpWriteReg(kRegIntConA, 0x00) || !mcpWriteReg(kRegGpIntEnA, kUsedInputMask)) {
-    Serial.println("MCP23017 interrupt config failed");
+    
     ready_ = false;
     return;
   }
@@ -126,7 +126,7 @@ void Input::update(OnEventCallback callback, void *context) {
       if (encoderTicks_[i] >= kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
         if (DebugFlags::kEnableInputEventLogs) {
-          Serial.printf("ENC%d CW\n", i + 1);
+          
         }
         if (callback) {
           const Event event = {
@@ -138,7 +138,7 @@ void Input::update(OnEventCallback callback, void *context) {
       } else if (encoderTicks_[i] <= -kEncoderDetentTicks) {
         encoderTicks_[i] = 0;
         if (DebugFlags::kEnableInputEventLogs) {
-          Serial.printf("ENC%d CCW\n", i + 1);
+          
         }
         if (callback) {
           const Event event = {
@@ -161,7 +161,7 @@ void Input::update(OnEventCallback callback, void *context) {
         switchRaw != switchStableState_[i]) {
       switchStableState_[i] = switchRaw;
       if (DebugFlags::kEnableInputEventLogs) {
-        Serial.printf("ENC%d %s\n", i + 1, (switchStableState_[i] == LOW) ? "PRESS" : "RELEASE");
+        
       }
       if (switchStableState_[i] == LOW) {
         switchPressStartMs_[i] = now;
@@ -179,7 +179,7 @@ void Input::update(OnEventCallback callback, void *context) {
         (now - switchPressStartMs_[i]) >= kLongPressMs) {
       longPressFired_[i] = true;
       if (DebugFlags::kEnableInputEventLogs) {
-        Serial.println("ENC2 LONG_PRESS");
+        
       }
       if (callback) {
         const Event event = {EventType::RightLongPress, 0};

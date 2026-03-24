@@ -469,7 +469,7 @@ void Ui::completeSave() {
 }
 
 void Ui::logNotImplemented(const char *functionName) const {
-  Serial.printf("Not implemented %s\n", functionName);
+  
 }
 
 void Ui::triggerPreview(int sampleIndex) {

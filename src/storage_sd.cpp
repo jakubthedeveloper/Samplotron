@@ -17,11 +17,11 @@ bool init() {
   delay(800);
 
   if (!SD.begin(Pins::SD_CS)) {
-    Serial.println("SD FAIL (check CS pin / wiring / card).");
+    
     return false;
   }
 
-  Serial.println("SD OK");
+  
   return true;
 }
 

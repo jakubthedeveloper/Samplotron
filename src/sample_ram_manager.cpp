@@ -31,13 +31,7 @@ void logPoolDiagnostics(uint32_t budgetBytes) {
   const size_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
   const size_t free8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   const size_t largest8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  Serial.printf(
-      "RAM pool diag: req=%lu free_psram=%lu largest_psram=%lu free_8bit=%lu largest_8bit=%lu\n",
-      static_cast<unsigned long>(budgetBytes),
-      static_cast<unsigned long>(freePsram),
-      static_cast<unsigned long>(largestPsram),
-      static_cast<unsigned long>(free8bit),
-      static_cast<unsigned long>(largest8bit));
+  
 }
 
 uint32_t readLe32(const uint8_t *buf) {
@@ -199,8 +193,7 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
     report.allocatedBytes = 0;
     report.fallbackToStreamCount = report.requestedRamCount;
     if (DebugFlags::kEnableDebugLogs) {
-      Serial.printf("RAM pool alloc failed for %lu bytes\n",
-                    static_cast<unsigned long>(gFixedPoolBudget));
+      
     }
     return false;
   }
