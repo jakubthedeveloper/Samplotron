@@ -167,8 +167,7 @@ void Audio::playSamplePath(const String &samplePath,
                            int16_t retriggerGroupId,
                            bool loopEnabled) {
   if (!impl_ || samplePath.length() == 0) return;
-  const bool retriggeringGroup = AudioInternal::hasActiveVoiceForGroup(impl_, retriggerGroupId);
-  const uint32_t fadeInUs = retriggeringGroup ? AudioInternal::kRetriggerFadeInUs : 0;
+  const uint32_t fadeInUs = 0;
 
   bool voiceWasStolen = false;
   const int voiceIndex = AudioInternal::allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
@@ -184,11 +183,6 @@ void Audio::playSamplePath(const String &samplePath,
           impl_, voiceIndex, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs)) {
     AudioInternal::refreshStats(impl_);
     return;
-  }
-
-  if (retriggeringGroup) {
-    AudioInternal::requestStopVoicesForGroup(
-        impl_, retriggerGroupId, AudioInternal::kRetriggerFadeOutUs, voiceIndex);
   }
 
   AudioInternal::refreshStats(impl_);
@@ -247,8 +241,7 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                           int16_t retriggerGroupId,
                           bool loopEnabled) {
   if (!impl_ || !pcmData || dataBytes == 0) return false;
-  const bool retriggeringGroup = AudioInternal::hasActiveVoiceForGroup(impl_, retriggerGroupId);
-  const uint32_t fadeInUs = retriggeringGroup ? AudioInternal::kRetriggerFadeInUs : 0;
+  const uint32_t fadeInUs = 0;
 
   bool voiceWasStolen = false;
   const int voiceIndex = AudioInternal::allocateVoiceSlot(impl_, retriggerGroupId, voiceWasStolen);
@@ -271,10 +264,6 @@ bool Audio::playSampleRam(const uint8_t *pcmData,
                                                         retriggerGroupId,
                                                         loopEnabled,
                                                         fadeInUs);
-  if (started && retriggeringGroup) {
-    AudioInternal::requestStopVoicesForGroup(
-        impl_, retriggerGroupId, AudioInternal::kRetriggerFadeOutUs, voiceIndex);
-  }
   AudioInternal::refreshStats(impl_);
   return started;
 }
