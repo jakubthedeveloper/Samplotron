@@ -1,12 +1,14 @@
 # Samplotron
 
+[![Build Main Firmware](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml/badge.svg)](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml)
+
+[Latest firmware.bin](https://github.com/jakubthedeveloper/Samplotron/releases/download/main-latest/firmware.bin)
+
 ![Samplotron](Samplotron.jpg)
 
 Samplotron is a hands-on hardware sampler for musicians and producers: load your own WAV sounds from SD, assign them to MIDI notes, perform with immediate control over volume and shot/loop behavior, and save your live setup in seconds. Start with the workflow guide here: [`docs/manual.md`](docs/manual.md).
 
-[![Build Main Firmware](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml/badge.svg)](https://github.com/jakubthedeveloper/Samplotron/actions/workflows/build-main.yml)
-
-[Latest firmware.bin](https://github.com/jakubthedeveloper/Samplotron/releases/download/main-latest/firmware.bin)
+[Why I built my own sampler — full article on Medium](https://medium.com/@KubaPisze/i-built-my-own-sampler-to-fit-my-needs-217493f4067c)
 
 Samplotron is an `ESP32 (ESP-WROVER-KIT)` sampler: it plays WAV files from SD, maps samples to MIDI notes, and stores device configuration on the card.
 
