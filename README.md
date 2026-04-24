@@ -34,6 +34,7 @@ Architecture note: `src/main.cpp` is a thin entrypoint, while runtime orchestrat
 - `PlatformIO CLI` (`pio`) or PlatformIO IDE extension.
 - `esp-wrover-kit` board (PSRAM is used).
 - Connected hardware: ES8388, SSD1309 OLED (I2C), MCP23017 + 2 encoders, MIDI IN, SD card.
+- Noise-mitigation hardware (current revision): 600:600 audio isolation transformer on one output channel path to the jack output (jack isolated from chassis), and Hi-Link `B0505S-3WR3` DC/DC isolator on power path.
 2. Prepare SD card (FAT32):
 - create `/samples`,
 - copy `.wav` files into `/samples`,

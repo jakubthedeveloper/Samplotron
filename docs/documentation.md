@@ -50,6 +50,14 @@ Source of truth: `include/pins.h`.
 - `MIDI_IN`: GPIO22
 - UART: `Serial2`, `31250 bps`
 
+### Audio/Power Isolation (Noise Mitigation)
+
+Current hardware revision includes additional isolation elements to reduce audible noise caused by ground loops between Samplotron and an external mixer:
+
+- audio output path: `600:600` audio isolation transformer inserted between one output channel and the output jack,
+- output jack: isolated from chassis,
+- power path: Hi-Link `B0505S-3WR3` DC/DC isolator.
+
 ## 3. Encoder Mapping (MCP23017 GPA)
 
 - `GPA0`: Encoder 1 A
