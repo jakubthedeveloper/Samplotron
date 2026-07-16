@@ -15,7 +15,7 @@ Disconnect power while wiring. The ESP32-A1S and MCP23017 must share ground.
 | 3.3 V | VCC |
 | GND | GND |
 
-Connect the ten calculator lines to `PA0` through `PA7`, plus `PB1` and `PB2`.
+Connect the ten calculator lines to `PA0` through `PA7`, plus `PB0` and `PB1`.
 The default keypad MCP23017 address is `0x26`; Samplotron's existing encoder
 MCP normally remains at `0x27`. Ensure the MCP address straps select `0x26`.
 

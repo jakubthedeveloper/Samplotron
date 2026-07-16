@@ -16,7 +16,7 @@ The calculator keypad exposes **10 electrical lines**.
 
 Each key shorts **exactly two lines**.
 
-The lines are connected to a dedicated MCP23017: - PA0--PA7 - PB1--PB2
+The lines are connected to a dedicated MCP23017: - PA0--PA7 - PB0--PB1
 
 The MCP23017 address shall be configurable (default `0x26`). The
 existing Samplotron MCP uses `0x27`.

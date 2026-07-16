@@ -38,7 +38,7 @@ struct KeypadLine {
 
 constexpr KeypadLine kLines[kLineCount] = {
     {'A', 0}, {'A', 1}, {'A', 2}, {'A', 3}, {'A', 4},
-    {'A', 5}, {'A', 6}, {'A', 7}, {'B', 1}, {'B', 2},
+    {'A', 5}, {'A', 6}, {'A', 7}, {'B', 0}, {'B', 1},
 };
 
 struct Pair {
@@ -141,7 +141,7 @@ bool initializeMcp() {
       !mcpWriteRegister(kRegOlatA, 0x00) ||
       !mcpWriteRegister(kRegOlatB, 0x00) ||
       !mcpWriteRegister(kRegGppuA, 0xFF) ||
-      !mcpWriteRegister(kRegGppuB, 0x06)) {
+      !mcpWriteRegister(kRegGppuB, 0x03)) {
     Serial.println(F("ERROR: MCP23017 responded but register setup failed."));
     return false;
   }
