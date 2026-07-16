@@ -1,0 +1,37 @@
+Key line connections:
+PA0 - K10
+PA1 - K9
+PA2 - K8
+PA3 - K7
+PA4 - K5
+PA5 - K4
+PA6 - K2
+PA7 - K6
+PB0 - K1
+PB1 - K3
+
+Key mappings
+0   - PA1 - PB1
+00  - PA1 - PA6
+dot -
+1   - PA1 - PA5
+2   - PA1 - PA4
+3   - PA1 - PA7
+4   - PA1 - PA3
+5   - PA1 - PA4
+6   - PA1 - PA7
+7   - PA4 - PA6
+8   - PA4 - PB1
+9   - PA4 - PA5
+AC  - PA6 - PB1
+right - PA3 - PA6
+MRC - PA7 - PB1
+M-  - PA6 - PA7
+M+  - 
+=   - PA2 - PA4
++   - 
+%   - PA2 - PA7
+GT  - PA5 - PB1
+div - PA2 - PA5
+x   - PA2 - PB1
+-   - PA2 - PA6
