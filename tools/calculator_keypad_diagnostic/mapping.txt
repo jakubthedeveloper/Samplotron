@@ -18,8 +18,8 @@ dot - PA1 - PB0
 2   - PA1 - PA4
 3   - PA1 - PA7
 4   - PA1 - PA3
-5   - PA1 - PA4
-6   - PA1 - PA7
+5   - PA1 - PA2
+6   - PA4 - PB0
 7   - PA4 - PA6
 8   - PA4 - PB1
 9   - PA4 - PA5
