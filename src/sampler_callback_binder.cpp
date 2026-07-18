@@ -29,12 +29,24 @@ void SamplerCallbackBinder::pollInput(Input &input) {
   input.update(onInputEvent, this);
 }
 
+void SamplerCallbackBinder::pollCalculatorKeypad(CalculatorKeypad &keypad) {
+  keypad.update(onKeypadNoteOn, this);
+}
+
 void SamplerCallbackBinder::onInputEvent(const Input::Event &event, void *context) {
   auto *self = static_cast<SamplerCallbackBinder *>(context);
   if (!self || !self->ui_) {
     return;
   }
   InputUiBridge::routeToUi(event, *self->ui_);
+}
+
+void SamplerCallbackBinder::onKeypadNoteOn(int midiNote, void *context) {
+  auto *self = static_cast<SamplerCallbackBinder *>(context);
+  if (!self || !self->midi_) {
+    return;
+  }
+  self->midi_->handleNoteOn(midiNote);
 }
 
 void SamplerCallbackBinder::onPreviewSample(int sampleIndex, void *context) {

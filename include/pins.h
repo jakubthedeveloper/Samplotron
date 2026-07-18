@@ -24,5 +24,6 @@ constexpr int MCP_SCL = OLED_SCK;
 constexpr int MCP_INTA = 5;
 constexpr int MCP_INTB = 0;
 constexpr uint8_t MCP_I2C_ADDR = 0x27;
+constexpr uint8_t KEYPAD_MCP_I2C_ADDR = 0x26;
 
 }  // namespace Pins

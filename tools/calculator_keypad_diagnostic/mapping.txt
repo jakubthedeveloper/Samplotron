@@ -23,15 +23,4 @@ dot - PA1 - PB0
 7   - PA4 - PA6
 8   - PA4 - PB1
 9   - PA4 - PA5
-AC  - PA6 - PB1
-right - PA3 - PA6
-MRC - PA7 - PB1
-M-  - PA6 - PA7
-M+  - PA7 - PB0
-=   - PA2 - PA4
-+   - PA2 - PB0
-%   - PA2 - PA7
-GT  - PA5 - PB1
-div - PA2 - PA5
-x   - PA2 - PB1
--   - PA2 - PA6
+

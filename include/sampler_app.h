@@ -5,6 +5,7 @@
 
 #include "audio.h"
 #include "boot_screen_flow.h"
+#include "calculator_keypad.h"
 #include "display_ssd1309.h"
 #include "input.h"
 #include "midi.h"
@@ -41,6 +42,7 @@ class SamplerApp {
 
   Audio audio_;
   Input input_;
+  CalculatorKeypad calculatorKeypad_;
   Midi midi_;
   Ui ui_;
   DisplaySsd1309 display_;

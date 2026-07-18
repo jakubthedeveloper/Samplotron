@@ -3,6 +3,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include "calculator_keypad.h"
 #include "input.h"
 #include "midi.h"
 #include "sampler_loader_ipc.h"
@@ -19,9 +20,11 @@ class SamplerCallbackBinder {
              QueueHandle_t loaderCommandQueue);
   void bindUiAndMidiCallbacks();
   void pollInput(Input &input);
+  void pollCalculatorKeypad(CalculatorKeypad &keypad);
 
  private:
   static void onInputEvent(const Input::Event &event, void *context);
+  static void onKeypadNoteOn(int midiNote, void *context);
   static void onPreviewSample(int sampleIndex, void *context);
   static void onAssignedMidiNoteOn(int midiNote, void *context);
   static bool onSaveConfiguration(void *context);

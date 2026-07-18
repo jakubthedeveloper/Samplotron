@@ -83,6 +83,7 @@ void SamplerApp::loadStorageAndSettings() {
 
 void SamplerApp::initializeInteractiveModules() {
   input_.begin();
+  calculatorKeypad_.begin();
   ui_.begin(catalog_.names, catalog_.paths, catalog_.count);
   midi_.begin(&ui_);
   runtime_.applyAssignmentsToUi(ui_, catalog_);
@@ -232,6 +233,7 @@ void SamplerApp::runUiTask() {
   while (true) {
     midi_.update();
     callbackBinder_.pollInput(input_);
+    callbackBinder_.pollCalculatorKeypad(calculatorKeypad_);
     ui_.update();
     display_.update();
     vTaskDelay(pdMS_TO_TICKS(1));

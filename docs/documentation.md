@@ -41,7 +41,9 @@ Source of truth: `include/pins.h`.
 - `SDA`: GPIO23
 - `SCL`: GPIO18
 - OLED: auto-detected address `0x3C` / `0x3D`
-- MCP23017: default address `0x27`
+- encoder MCP23017: address `0x27`
+- calculator keypad MCP23017: address `0x26`; keys `0`, `00`, `.`, `1`...`9`
+  generate MIDI NOTE ON events `60`...`71`, respectively
 - `MCP_INTA`: GPIO5
 - `MCP_INTB`: GPIO0 (currently not used by main firmware)
 
