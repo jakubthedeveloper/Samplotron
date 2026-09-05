@@ -1,6 +1,6 @@
 # Samplotron Manual (Musician Workflow)
 
-This guide focuses on making music with Samplotron: loading sounds, mapping them to MIDI, shaping playback, and saving your setup.
+This guide focuses on making music with Samplotron: loading sounds, mapping them to MIDI, shaping playback, and saving your setup. For SD card preparation and firmware installation, start with the [README](../README.md#preparing-samples-and-first-use).
 
 ## 1. Power On and Wait for Ready
 
@@ -19,8 +19,10 @@ This is your performance view: selected sample, assigned MIDI note, and menu tab
 ![Main sample screen](screenshots/sample.jpg)
 
 Control feel:
+
 - Left encoder: move between menu tabs (`L:select`).
 - Right encoder/button: enter and adjust the selected function (`R:enter/adj`).
+- Left click: open the output waveform view. Rotate either encoder or press a button to return; MIDI and keypad playback continue in this view.
 
 ## 3. Browse the Library and Preview Sounds
 
@@ -29,6 +31,7 @@ Go to `LIB` to browse your sample list and audition sounds before assigning.
 ![Library screen](screenshots/library.jpg)
 
 In `LIB`:
+
 - Right rotate: browse samples.
 - Right click: play preview.
 - Left click: go back.
@@ -49,19 +52,21 @@ In `LIB`, rotate the left encoder to switch from sample mode to `PANIC MODE`, th
 
 ![Panic mode setup](screenshots/panic%20setup.jpg)
 
-Use this note as an emergency all-notes-off trigger during live play.
+Use this note to fade out every sound and clear pending triggers during live play. Choose a separate note from your sample assignments: panic takes priority if they share a note.
 
 ## 6. Shape Playback Per Sample
 
 ### Volume
 
-Select `VOL` on the main screen and adjust level for the active sample.
+Trigger or preview a sample, select `VOL` on the main screen, and rotate the right encoder to set its level from 0 to 100 in steps of 5. The new level applies to subsequent triggers. MIDI velocity does not change the volume.
 
 ![Volume screen](screenshots/vol.jpg)
 
 ### Shot or Loop
 
-Select `SHOT`/`LOOP` on the main screen to choose one-shot playback or looping behavior.
+Select `SHOT`/`LOOP` on the main screen and click or rotate the right encoder to toggle the mode. `SHOT` plays once; `LOOP` repeats the sample. Triggering the same sample again restarts it. Releasing a MIDI or keypad key does not stop the sound.
+
+To stop a loop, change that sample to `SHOT`, or use your panic note to stop all sounds. Loops are not synchronized to MIDI clock.
 
 ![Loop mode screen](screenshots/loop.jpg)
 
@@ -71,7 +76,9 @@ After assignments or sound tweaks, `SAVE` appears on the main screen.
 
 ![Save tab on main screen](screenshots/save.jpg)
 
-Press save and wait until writing is complete.
+Press save and wait until writing is complete. Save between performances: if playback does not finish within 3 seconds, saving requests a stop before preparing samples again.
+
+Saving preserves note assignments, assigned sample volumes, playback modes, and the panic note. Assign a sample before saving if you want to retain its volume setting.
 
 ![Saving in progress screen](screenshots/saving.jpg)
 
