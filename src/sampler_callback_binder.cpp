@@ -34,6 +34,10 @@ void SamplerCallbackBinder::onInputEvent(const Input::Event &event, void *contex
   if (!self || !self->ui_) {
     return;
   }
+  if (event.type == Input::EventType::KeypadNoteOn) {
+    if (self->midi_) self->midi_->handleNoteOn(event.value);
+    return;
+  }
   InputUiBridge::routeToUi(event, *self->ui_);
 }
 

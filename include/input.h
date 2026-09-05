@@ -12,11 +12,12 @@ class Input {
     RightRotate,
     RightClick,
     RightLongPress,
+    KeypadNoteOn,
   };
 
   struct Event {
     EventType type;
-    int value;  // Rotation delta for rotate events (+1/-1), otherwise 0.
+    int value;  // Rotation delta (+1/-1), MIDI note for KeypadNoteOn, otherwise 0.
   };
 
   using OnEventCallback = void (*)(const Event &event, void *context);
@@ -31,6 +32,12 @@ class Input {
   static constexpr unsigned long kLongPressMs = 700;
 
   bool ready_ = false;
+  void updateKeypad(OnEventCallback callback, void *context);
+  bool keypadReady_ = false;
+  unsigned long keypadLastScanMs_ = 0;
+  bool keypadStable_[16] = {};
+  bool keypadLastRead_[16] = {};
+  unsigned long keypadLastChangeMs_[16] = {};
   uint8_t encoderState_[kNumEncoders] = {0, 0};
   int8_t encoderTicks_[kNumEncoders] = {0, 0};
   int switchStableState_[kNumEncoders] = {HIGH, HIGH};

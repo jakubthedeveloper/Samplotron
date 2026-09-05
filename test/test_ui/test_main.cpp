@@ -2,6 +2,7 @@
 
 #include "Arduino.h"
 #include "input_ui_bridge.h"
+#include "keypad_mapping.h"
 #include "ui.h"
 
 // Build selected production units directly for native tests.
@@ -10,6 +11,24 @@
 #include "../../src/ui.cpp"
 
 namespace {
+
+void test_keypad_notes_follow_measured_physical_order() {
+  const uint8_t scanOrder[] = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
+  for (int i = 0; i < 16; ++i) {
+    TEST_ASSERT_EQUAL_INT(36 + i, KeypadMapping::kMidiNotes[scanOrder[i]]);
+  }
+}
+
+void test_keypad_event_is_not_interpreted_as_encoder_event() {
+  Ui ui;
+  ui.begin(nullptr, nullptr, 0);
+  const auto state = ui.model().state;
+  const int selection = ui.model().mainSelection;
+  InputUiBridge::routeToUi({Input::EventType::KeypadNoteOn, 36}, ui);
+  TEST_ASSERT_EQUAL(state, ui.model().state);
+  TEST_ASSERT_EQUAL_INT(selection, ui.model().mainSelection);
+  TEST_ASSERT_EQUAL_INT(-1, ui.model().lastMidiNote);
+}
 
 constexpr int kSampleCount = 3;
 const String kNames[kSampleCount] = {"Kick", "Snare", "Hat"};
@@ -211,6 +230,8 @@ void tearDown() {}
 
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_keypad_notes_follow_measured_physical_order);
+  RUN_TEST(test_keypad_event_is_not_interpreted_as_encoder_event);
   RUN_TEST(test_begin_sets_initial_model);
   RUN_TEST(test_midi_assignment_keeps_sample_unique);
   RUN_TEST(test_input_ui_bridge_maps_right_click_to_library_transition);

@@ -67,6 +67,20 @@ Current hardware revision includes additional isolation elements to reduce audib
 - `GPA4`: Encoder 2 B
 - `GPA5`: Encoder 2 switch
 
+### Matrix keypad (MCP23017 port B, main firmware)
+
+- Assumed wiring: 4x4 matrix, rows 1..4 on `GPB0..GPB3`, columns 1..4 on `GPB4..GPB7`.
+- Columns use internal pull-ups. Scanning drives one row LOW and leaves the other rows as inputs; all rows are released after each scan.
+- A full scan runs at most once every `5 ms`, subject to UI loop timing, with `35 ms` debounce per key.
+- Serial monitor: `115200 baud`. A press prints e.g. `[KEYPAD] PRESS key=1 row=1 col=1` once; holding does not repeat. Release rearms the key after debounce.
+- Debug key numbers are electrical row-major, `1..16`; printed row/column numbers are `1..4`.
+- Physical key order (measured debug numbers `1,5,9,13,2,6,10,14,3,7,11,15,4,8,12,16`) maps to MIDI notes `36..51`. Edit `include/keypad_mapping.h` to change the mapping.
+- Presses enter the same `Midi::handleNoteOn()` path as external MIDI, including sample/panic note learning and assigned sample playback. Assign samples using the existing Library workflow and save as usual. Serial also prints `note=36` etc.
+- Releases do not stop playback, matching the current external MIDI implementation, which ignores Note Off. Holding a key does not retrigger it.
+- Without matrix diodes, simultaneous presses can produce ghost keys; this initial diagnostic does not suppress ghosting.
+- Register configuration follows the [Microchip MCP23017 datasheet](https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/20001952C.pdf), with `IOCON.BANK=0`.
+- The separate `esp-wrover-kit-debug-input` firmware still tests encoders only.
+
 ## 4. SD Card and Files
 
 ### Layout

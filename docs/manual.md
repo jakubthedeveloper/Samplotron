@@ -39,7 +39,9 @@ While a sample is selected in `LIB`, hold the right button to enter note assignm
 
 ![Assign note screen](screenshots/assign.jpg)
 
-Then play a note on your MIDI controller. That note becomes the trigger for the selected sample.
+Then play a note on your MIDI controller or press a key on the built-in matrix keypad. That note becomes the trigger for the selected sample.
+
+The 16 keypad keys send notes `36..51` in the measured physical key order. They use the same assignments and playback behavior as external MIDI. Hold the right button in `LIB`, press the desired keypad key, and save your configuration as usual. Releasing a key does not stop a sample or loop.
 
 ## 5. Optional: Set a Panic Note
 

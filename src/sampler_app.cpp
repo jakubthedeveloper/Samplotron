@@ -50,6 +50,7 @@ void SamplerApp::setup() {
 }
 
 void SamplerApp::initializePlatform() {
+  Serial.begin(115200);
   delay(200);
 }
 

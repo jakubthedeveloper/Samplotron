@@ -7,6 +7,9 @@ void routeToUi(const Input::Event &event, Ui &ui) {
   uiEvent.value = event.value;
 
   switch (event.type) {
+    case Input::EventType::KeypadNoteOn:
+      // Routed through Midi by SamplerCallbackBinder, including playback.
+      return;
     case Input::EventType::LeftRotate:
       uiEvent.type = Ui::EventType::LeftRotate;
       break;
