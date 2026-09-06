@@ -2,11 +2,13 @@
 #include <U8g2lib.h>
 #include <Wire.h>
 
+#include "display_config.h"
 #include "pins.h"
 
 namespace {
 
-U8G2_SSD1309_128X64_NONAME0_F_HW_I2C gDisplay(U8G2_R0, U8X8_PIN_NONE);
+U8G2_SSD1309_128X64_NONAME0_F_HW_I2C gDisplay(
+    DisplayConfig::ROTATE_180 ? U8G2_R2 : U8G2_R0, U8X8_PIN_NONE);
 constexpr int kDebugSdaPin = Pins::OLED_MOSI;  // GPIO23
 constexpr int kDebugSclPin = Pins::OLED_SCK;   // GPIO18
 

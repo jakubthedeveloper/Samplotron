@@ -92,6 +92,8 @@ Run it on copies of your source recordings: it replaces WAV files in place, conv
 
 ### Configuration and diagnostics
 
+Display orientation is configured by `DisplayConfig::ROTATE_180` in [include/display_config.h](include/display_config.h). It defaults to `true` (180° rotation); set it to `false` for the original orientation. Rebuild and upload the firmware after changing it. This applies to all screens in the main firmware and the input diagnostic firmware.
+
 The on-device `SAVE` action writes `/sampler_config.json`. For manual configuration, including the RAM budget and panic note, see the [configuration format](docs/documentation.md#5-sampler_configjson-configuration). Changing the RAM budget requires a reboot.
 
 The main firmware prints keypad initialization and key-press diagnostics at 115200 baud. Dedicated firmware environments are available for testing encoders and MIDI input:

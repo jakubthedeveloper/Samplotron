@@ -6,10 +6,12 @@
 #include <stdio.h>
 
 #include "pins.h"
+#include "display_config.h"
 
 namespace {
 
-U8G2_SSD1309_128X64_NONAME0_F_HW_I2C gDisplay(U8G2_R0, U8X8_PIN_NONE);
+U8G2_SSD1309_128X64_NONAME0_F_HW_I2C gDisplay(
+    DisplayConfig::ROTATE_180 ? U8G2_R2 : U8G2_R0, U8X8_PIN_NONE);
 
 bool probeI2cAddress(uint8_t address7bit) {
   Wire.beginTransmission(address7bit);
