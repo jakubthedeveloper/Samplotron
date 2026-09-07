@@ -9,11 +9,12 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-SITE = ROOT / 'tutorial'
+SITE = ROOT / 'docs'
+CONTENT = SITE / 'tutorial'
 
 
 def load_assignment(filename, variable):
-    return json.loads((SITE / filename).read_text().split(variable + ' = ', 1)[1].rstrip(';\n'))
+    return json.loads((CONTENT / filename).read_text().split(variable + ' = ', 1)[1].rstrip(';\n'))
 
 
 def main():
@@ -48,7 +49,7 @@ def main():
     for ref in re.findall(r'(?:src|href)="([^"]+)"', page):
         if not ref.startswith(('https:', '#')):
             assert not ref.startswith('/') and (SITE / ref).is_file(), ref
-    production = '\n'.join((SITE / name).read_text() for name in ('player.js', 'renderer.js'))
+    production = '\n'.join((CONTENT / name).read_text() for name in ('player.js', 'renderer.js'))
     assert not re.search(r'localStorage|FileReader|createObjectURL|validateDirection|scaleSceneTiming|validPhoto|photoScene', production)
     print(f"Static checks passed: {len(ids)} steps, {len(screens)} OLED frames, {sum(s['duration'] for s in guide['scenes'])} seconds.")
     if args.browser:

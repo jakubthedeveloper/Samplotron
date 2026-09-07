@@ -5,42 +5,42 @@ window.SAMPLOTRON_GUIDE = {
     {
       "id": "esp",
       "name": "ESP32-A1S / Audio Kit",
-      "image": "assets/esp.svg"
+      "image": "tutorial/assets/esp.svg"
     },
     {
       "id": "oled",
       "name": "OLED SSD1309 · 128 × 64",
-      "image": "assets/oled.svg"
+      "image": "tutorial/assets/oled.svg"
     },
     {
       "id": "mcp",
       "name": "MCP23017",
-      "image": "assets/mcp.svg"
+      "image": "tutorial/assets/mcp.svg"
     },
     {
       "id": "enc",
       "name": "Rotary encoders · left / right",
-      "image": "assets/enc.svg"
+      "image": "tutorial/assets/enc.svg"
     },
     {
       "id": "keypad",
       "name": "Matrix keypad · 4 × 4",
-      "image": "assets/keypad.svg"
+      "image": "tutorial/assets/keypad.svg"
     },
     {
       "id": "sd",
       "name": "microSD card",
-      "image": "assets/sd.svg"
+      "image": "tutorial/assets/sd.svg"
     },
     {
       "id": "audio",
       "name": "Audio output / monitoring",
-      "image": "assets/audio.svg"
+      "image": "tutorial/assets/audio.svg"
     },
     {
       "id": "midi",
       "name": "MIDI IN · isolated receiver",
-      "image": "assets/midi.svg"
+      "image": "tutorial/assets/midi.svg"
     }
   ],
   "scenes": [

@@ -14,7 +14,7 @@ The current photos show an earlier version played only through external MIDI. Ph
 
 For a walkthrough with screen photos, see the [musician's manual](docs/manual.md). Firmware binaries are available in the [latest main release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest).
 
-The [interactive build guide](tutorial/README.md) walks through assembly with animated wiring diagrams and firmware screen demonstrations. It runs locally or as a static website, with step selection, play/pause and optional automatic progression.
+The [interactive build guide](docs/tutorial/README.md) walks through assembly with animated wiring diagrams and firmware screen demonstrations. It runs locally or as a static website, with step selection, play/pause and optional automatic progression.
 
 ## Technical Details
 
