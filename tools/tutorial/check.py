@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-SITE = ROOT / 'docs/tutorial'
+SITE = ROOT / 'tutorial'
 
 
 def load_assignment(filename, variable):
