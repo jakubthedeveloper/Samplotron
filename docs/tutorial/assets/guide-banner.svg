@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-labelledby="title description">
+  <title id="title">Open the Samplotron interactive build guide</title>
+  <desc id="description">Build your own Samplotron in 21 interactive steps with animated wiring and firmware screens.</desc>
+  <rect x="1" y="1" width="1198" height="238" rx="16" fill="#111110" stroke="#ffd42a" stroke-width="2"/>
+  <path d="M32 32v176" stroke="#ffd42a" stroke-width="8"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="64" y="53" fill="#ffd42a" font-size="18" font-weight="700" letter-spacing="2">21 STEPS · ANIMATED WIRING · FIRMWARE SCREENS</text>
+    <text x="64" y="107" fill="#eee8d7" font-size="42" font-weight="700">Build your own Samplotron</text>
+    <rect x="64" y="139" width="760" height="65" rx="8" fill="#ffd42a"/>
+    <text x="94" y="182" fill="#171400" font-size="30" font-weight="700">OPEN THE INTERACTIVE GUIDE →</text>
+    <circle cx="1052" cy="121" r="67" fill="#242217" stroke="#ffd42a" stroke-width="3"/>
+    <path d="M1035 88l48 33-48 33z" fill="#ffd42a"/>
+  </g>
+</svg>

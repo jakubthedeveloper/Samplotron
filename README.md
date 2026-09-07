@@ -6,6 +6,10 @@ Hardware WAV Sampler
 
 Samplotron is a standalone hardware sampler played with an external MIDI controller or its built-in 16-key pad. Load your own WAV files from an SD card, assign sounds to notes, and play one-shots or loops with per-sample volume control. Two encoders and an OLED display let you browse, preview, assign, and save sounds directly on the device.
 
+[![Open the interactive build guide — build your own Samplotron in 21 steps](docs/tutorial/assets/guide-banner.svg)](https://jakubthedeveloper.github.io/Samplotron/)
+
+**[Explore the interactive build guide →](https://jakubthedeveloper.github.io/Samplotron/)** Follow animated wiring diagrams and firmware screen demonstrations, from connecting your first component to playing samples. Pause, replay and build at your own pace.
+
 ![Samplotron hardware sampler](Samplotron.jpg)
 
 The current photos show an earlier version played only through external MIDI. Photos of the version with the built-in keypad are coming soon.
@@ -13,8 +17,6 @@ The current photos show an earlier version played only through external MIDI. Ph
 [Why I built my own sampler — full article on Medium](https://medium.com/@KubaPisze/i-built-my-own-sampler-to-fit-my-needs-217493f4067c)
 
 For a walkthrough with screen photos, see the [musician's manual](docs/manual.md). Firmware binaries are available in the [latest main release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest).
-
-The [interactive build guide](docs/tutorial/README.md) walks through assembly with animated wiring diagrams and firmware screen demonstrations. It runs locally or as a static website, with step selection, play/pause and optional automatic progression.
 
 ## Technical Details
 
