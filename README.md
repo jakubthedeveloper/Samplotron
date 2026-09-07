@@ -14,6 +14,8 @@ The current photos show an earlier version played only through external MIDI. Ph
 
 For a walkthrough with screen photos, see the [musician's manual](docs/manual.md). Firmware binaries are available in the [latest main release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest).
 
+The [interactive build guide](docs/tutorial/README.md) walks through assembly with animated wiring diagrams and firmware screen demonstrations. It runs locally or as a static website, with step selection, play/pause and optional automatic progression.
+
 ## Technical Details
 
 Samplotron uses an ESP32 with PSRAM, built with the `esp-wrover-kit` PlatformIO board configuration, and an ES8388 audio codec. It plays mono PCM16 WAV files at 44.1 kHz through a shared 32-voice engine. Short assigned samples can be preloaded into RAM; longer samples stream from SD.

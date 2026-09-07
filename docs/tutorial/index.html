@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Build Samplotron step by step: connect the display, encoders and keypad, install firmware, play samples and add MIDI.">
+  <meta name="theme-color" content="#10100e">
+  <title>Samplotron — interactive build guide</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="content.js" defer></script>
+  <script src="screens.js" defer></script>
+  <script src="renderer.js" defer></script>
+  <script src="player.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 class="sr-only">Samplotron — interactive build guide</h1>
+    <section class="presentation" aria-label="Interactive presentation">
+      <div id="stage">
+        <svg id="frame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" aria-label="Build Samplotron step by step"></svg>
+      </div>
+      <div class="transport" role="group" aria-label="Playback controls">
+        <button id="prev" type="button" aria-label="Previous step">← Previous</button>
+        <button id="play" type="button" aria-pressed="false">▶ Play</button>
+        <button id="next" type="button" aria-label="Next step">Next →</button>
+        <output id="clock" aria-label="Presentation time"></output>
+        <label class="speed">Speed
+          <select id="speed" aria-label="Playback speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+        <label class="auto"><input id="autoAdvance" type="checkbox"> Auto-advance</label>
+        <button id="fullscreen" type="button" aria-pressed="false">⛶ Full screen</button>
+      </div>
+      <input id="seek" type="range" min="0" step="0.05" value="0" aria-label="Presentation timeline">
+      <p id="stepStatus" class="step-status" aria-live="polite"></p>
+      <p id="fullscreenError" role="status" hidden></p>
+      <p class="hint">Space: play / pause · ← →: switch steps · Home / End: first / last step. The guide starts paused and has no audio.</p>
+      <details class="step-notes">
+        <summary>Step instructions and notes</summary>
+        <p id="instructions"></p>
+        <p id="notes"></p>
+        <div id="stepLinks"></div>
+      </details>
+    </section>
+    <nav id="chapters" aria-label="Choose a step"></nav>
+    <noscript>This guide needs JavaScript for its animations. You can also read the <a href="https://github.com/jakubthedeveloper/Samplotron#readme">Samplotron documentation</a>.</noscript>
+  </main>
+</body>
+</html>
