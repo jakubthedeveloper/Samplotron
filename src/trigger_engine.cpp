@@ -111,14 +111,19 @@ void TriggerEngine::runAudioTask() {
     return;
   }
 
-  audio_->begin();
+  const bool audioReady = audio_->begin();
   
   if (uiStatusQueue_) {
     UiStatusEvent event;
     event.source = UiStatusSource::AudioEngine;
     event.type = UiStatusType::AudioTaskStarted;
-    event.success = true;
+    event.success = audioReady;
     xQueueSend(uiStatusQueue_, &event, 0);
+  }
+
+  if (!audioReady) {
+    vTaskDelete(nullptr);
+    return;
   }
 
   TriggerEvent event;

@@ -2,10 +2,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
 using std::size_t;
+
+class Print {
+ public:
+  virtual ~Print() = default;
+  virtual size_t write(uint8_t) = 0;
+};
 
 constexpr int HIGH = 1;
 constexpr int LOW = 0;

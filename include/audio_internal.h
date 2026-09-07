@@ -182,6 +182,7 @@ struct VoiceState {
 };
 
 struct EngineState {
+  bool ready = false;
   StableAudioOutputI2S *out = nullptr;
   SimpleLimiterAudioOutput *limitedOut = nullptr;
   AudioOutputMixer *mixer = nullptr;

@@ -41,12 +41,12 @@ Audio::~Audio() {
   impl_ = nullptr;
 }
 
-void Audio::begin() {
-  if (impl_) return;
+bool Audio::begin() {
+  if (impl_) return impl_->ready;
 
   impl_ = new Impl();
   if (!impl_) {
-    return;
+    return false;
   }
 
   impl_->out = new AudioInternal::StableAudioOutputI2S(
@@ -54,7 +54,7 @@ void Audio::begin() {
   if (!impl_->out) {
     delete impl_;
     impl_ = nullptr;
-    return;
+    return false;
   }
   impl_->out->SetPinout(Pins::I2S_BCLK, Pins::I2S_LRC, Pins::I2S_DOUT);
   impl_->out->SetGain(1.0f);
@@ -68,7 +68,7 @@ void Audio::begin() {
     impl_->out = nullptr;
     delete impl_;
     impl_ = nullptr;
-    return;
+    return false;
   }
 
   impl_->mixer = new AudioOutputMixer(AudioInternal::kMixerBufferSamples, impl_->limitedOut);
@@ -79,7 +79,7 @@ void Audio::begin() {
     impl_->out = nullptr;
     delete impl_;
     impl_ = nullptr;
-    return;
+    return false;
   }
 
   if (!impl_->streamManager.begin(kVoiceCount)) {
@@ -91,7 +91,7 @@ void Audio::begin() {
     impl_->out = nullptr;
     delete impl_;
     impl_ = nullptr;
-    return;
+    return false;
   }
 
   for (int i = 0; i < kVoiceCount; i++) {
@@ -106,7 +106,16 @@ void Audio::begin() {
     }
   }
 
+  // Start through the same mixer input used by playback, so the mixer records
+  // sinkStarted. Starting I2S directly would allocate a second channel when
+  // the first WAV calls begin(). Stop only this input; the sink stays running.
+  auto *startupInput = impl_->voices[0].stub;
+  if (!startupInput || !startupInput->begin()) return false;
+  startupInput->stop();
+  impl_->mixer->loop();  // Fill the output with silence before unmuting the codec.
+  impl_->ready = true;
   AudioInternal::refreshStats(impl_);
+  return true;
 }
 
 void Audio::update() {

@@ -45,6 +45,10 @@ void SamplerApp::setup() {
   if (!requestLoaderRebuildAndWait(8000)) {
     return;
   }
+  if (!CodecES8388::unmute()) {
+    Serial.println("Audio: codec unmute failed");
+    return;
+  }
   renderBootScreen(false);
   prepareCallbacksAndBootFlow();
 }
@@ -110,6 +114,13 @@ bool SamplerApp::startTasks() {
 
   uiStatusQueue_ = xQueueCreate(kUiStatusQueueLength, sizeof(UiStatusEvent));
   if (!uiStatusQueue_) {
+    return false;
+  }
+
+  // Start I2S while the codec is still soft-muted. The audio task calls
+  // begin() too, but Audio::begin() is idempotent.
+  if (!audio_.begin()) {
+    Serial.println("Audio: initialization failed; outputs remain muted");
     return false;
   }
 

@@ -24,7 +24,7 @@ class Audio {
   Audio();
   ~Audio();
 
-  void begin();
+  bool begin();
   void update();
   void playSamplePath(const String &samplePath,
                       uint8_t volume = 100,

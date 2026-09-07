@@ -26,6 +26,7 @@ constexpr uint8_t kRegHeadphoneOutLeft = 0x30;
 constexpr uint8_t kRegHeadphoneOutRight = 0x31;
 
 TwoWire gCodecWire(1);
+bool gCodecReady = false;
 
 bool codecWrite(uint8_t reg, uint8_t val) {
   gCodecWire.beginTransmission(kEs8388Addr);
@@ -68,23 +69,14 @@ void setMainDacVolume(uint8_t percent) {
   codecWrite(kRegDacVolumeRight, attenuationCode);
 }
 
-void unmuteOutputs() {
-  uint8_t value = 0;
-  if (codecRead(kRegDacControl3, value)) {
-    // Clear DAC soft-mute bit.
-    codecWrite(kRegDacControl3, static_cast<uint8_t>(value & ~(1U << 2)));
-  }
-  if (codecRead(kRegDacPower, value)) {
-    // Enable DAC output drivers routed to both output mixers.
-    codecWrite(kRegDacPower, static_cast<uint8_t>(value | (3U << 4) | (3U << 2)));
-  }
-}
-
 }  // namespace
 
 namespace CodecES8388 {
 
 bool init() {
+  gCodecReady = false;
+  pinMode(Pins::PA_EN, OUTPUT);
+  digitalWrite(Pins::PA_EN, LOW);
   gCodecWire.begin(Pins::I2C_SDA, Pins::I2C_SCL, kCodecI2cClockHz);
   gCodecWire.beginTransmission(kEs8388Addr);
   if (gCodecWire.endTransmission() != 0) {
@@ -121,7 +113,7 @@ bool init() {
       {kRegHeadphoneOutLeft, 0x1E}, // Headphone analog gain baseline.
       {kRegHeadphoneOutRight, 0x1E},// Headphone analog gain baseline.
       {kRegDacPower, 0x3C},     // Final DAC output path enable mask.
-      {kRegDacControl3, 0x00},  // Clear soft-mute after initialization.
+      {kRegDacControl3, 0x04},  // Keep DAC soft-muted until I2S is running.
       {0x03, 0x00},             // Final ADC power enable state.
   };
 
@@ -137,14 +129,28 @@ bool init() {
 #endif
   WRITE_PERI_REG(PIN_CTRL, 0xFFF0);
 
-  pinMode(Pins::PA_EN, OUTPUT);
-  digitalWrite(Pins::PA_EN, HIGH);
-
-  unmuteOutputs();
   setMainDacVolume(100);
   setHeadphoneVolume(100);
   setSpeakerVolume(100);
 
+  gCodecReady = true;
+  return true;
+}
+
+bool unmute() {
+  if (!gCodecReady) return false;
+  uint8_t value = 0;
+  if (!codecRead(kRegDacControl3, value)) return false;
+  if (!codecWrite(kRegDacControl3, static_cast<uint8_t>(value & ~(1U << 2)))) {
+    return false;
+  }
+
+  if (!codecRead(kRegDacPower, value)) return false;
+  if (!codecWrite(kRegDacPower, static_cast<uint8_t>(value | (3U << 4) | (3U << 2)))) {
+    return false;
+  }
+
+  digitalWrite(Pins::PA_EN, HIGH);
   return true;
 }
 

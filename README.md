@@ -131,7 +131,7 @@ Run the native tests without an ESP32 connected:
 pio test -e native
 ```
 
-`make test` runs the same command. The tests cover UI navigation, sample and panic assignment, keypad mapping, saving state, and routing playback requests to RAM or SD, including fallback and loop controls. They use hardware stubs; audio timing, SD throughput, and physical wiring require checks on the device.
+`make test` runs the same command. The tests in `test/` cover UI navigation, sample and panic assignment, keypad mapping, saving state, and routing playback requests to RAM or SD, including fallback and loop controls. The audio mixer regression test uses the actual ESP8266Audio mixer with a simulated output to check a single output start and silence before and after playback. Run it alone with `pio test -e native -f test_audio_mixer`. Shared hardware stubs live in `test/support/`; audio timing, SD throughput, and physical wiring require checks on the device.
 
 ### Code structure
 
