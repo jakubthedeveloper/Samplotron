@@ -17,6 +17,12 @@ constexpr uint8_t kDacVolumeMaxAttenuationCode = 96;
 
 // Register addresses used by this board profile.
 constexpr uint8_t kRegDacControl3 = 0x19;
+// ES8388 datasheet section 6.3.3: reset value 0x22, soft ramp at bit 5.
+// Preserve the default control bits, as in RudeBox commit 6be0d1e, to avoid
+// the reported pop after sustained digital silence. Mute changes only bit 2.
+constexpr uint8_t kDacControl3Playback = 0x22;
+constexpr uint8_t kDacMuteMask = 1U << 2;
+constexpr uint8_t kDacControl3Muted = kDacControl3Playback | kDacMuteMask;
 constexpr uint8_t kRegDacPower = 0x04;
 constexpr uint8_t kRegDacVolumeLeft = 0x1A;
 constexpr uint8_t kRegDacVolumeRight = 0x1B;
@@ -85,7 +91,7 @@ bool init() {
 
   // Board-validated ES8388 startup profile.
   const uint8_t initSeq[][2] = {
-      {kRegDacControl3, 0x04},  // Keep DAC soft-muted during clock and route setup.
+      {kRegDacControl3, kDacControl3Muted},  // Mute, preserving default control bits.
       {0x01, 0x50},             // Control1: use board MCLK setup profile.
       {0x02, 0x00},             // Chip power: enable core analog/digital blocks.
       {0x08, 0x00},             // Master mode control: codec in slave timing mode.
@@ -113,7 +119,7 @@ bool init() {
       {kRegHeadphoneOutLeft, 0x1E}, // Headphone analog gain baseline.
       {kRegHeadphoneOutRight, 0x1E},// Headphone analog gain baseline.
       {kRegDacPower, 0x3C},     // Final DAC output path enable mask.
-      {kRegDacControl3, 0x04},  // Keep DAC soft-muted until I2S is running.
+      {kRegDacControl3, kDacControl3Muted},  // Keep muted until I2S is running.
       {0x03, 0x00},             // Final ADC power enable state.
   };
 
@@ -133,6 +139,10 @@ bool init() {
   setHeadphoneVolume(100);
   setSpeakerVolume(100);
 
+  uint8_t control3 = 0;
+  if (!codecRead(kRegDacControl3, control3) || control3 != kDacControl3Muted) {
+    return false;
+  }
   gCodecReady = true;
   return true;
 }
@@ -141,7 +151,14 @@ bool unmute() {
   if (!gCodecReady) return false;
   uint8_t value = 0;
   if (!codecRead(kRegDacControl3, value)) return false;
-  if (!codecWrite(kRegDacControl3, static_cast<uint8_t>(value & ~(1U << 2)))) {
+  // Reject an unexpected startup profile instead of silently clearing its mute.
+  if ((value & static_cast<uint8_t>(~kDacMuteMask)) != kDacControl3Playback) {
+    return false;
+  }
+  if (!codecWrite(kRegDacControl3, static_cast<uint8_t>(value & ~kDacMuteMask))) {
+    return false;
+  }
+  if (!codecRead(kRegDacControl3, value) || value != kDacControl3Playback) {
     return false;
   }
 
