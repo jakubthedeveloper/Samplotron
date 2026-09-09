@@ -30,6 +30,7 @@ class SamplerMixer {
  public:
   static constexpr int kMaxInputs = 32;
   static constexpr int kLookaheadSamples = 64;  // 1.45 ms at 44.1 kHz.
+  static constexpr int kAttackSamples = 32;  // Remaining look-ahead holds the peak bound.
   static constexpr float kCeiling = 32767.0f;
   static constexpr float kReleaseSeconds = 0.050f;
   SamplerMixer(int bufferSamples, AudioOutput *sink);

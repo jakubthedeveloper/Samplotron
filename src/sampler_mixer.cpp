@@ -63,7 +63,10 @@ bool SamplerMixer::start(int id) {
 
 bool SamplerMixer::emit(float left, float right) {
   const Frame &oldest = delay_[delayHead_];
-  const float nextGain = std::min(oldest.bound, 1.0f - (1.0f - gain_) * releaseCoeff_);
+  // Exponential decay of a peak envelope means multiplicative gain recovery.
+  // Interpolating the gain toward 1 recovers far too fast after deep limiting
+  // (e.g. 32 aligned voices), flattening the final peaks when look-ahead ends.
+  const float nextGain = std::min(oldest.bound, std::min(1.0f, gain_ / releaseCoeff_));
   // Bounds were computed on the wide sum before narrowing. The clamp only
   // guards floating point rounding at the PCM16 boundary, not mix overloads.
   auto pcm = [](float value) {
@@ -77,13 +80,15 @@ bool SamplerMixer::emit(float left, float right) {
   const float required = peak > kCeiling ? kCeiling / peak : 1.0f;
   // Schedule a gain bound from the current gain to the future peak. This
   // ramps down BEFORE overload and also prevents release from rising too far
-  // before a later peak. Overlapping ramps take their minimum.
+  // before a later peak. Reach the bound halfway through the look-ahead,
+  // then hold it, so a rising waveform is not limited one point at a time.
+  // Overlapping ramps take their minimum.
   // Each frame also retains its own required bound until it reaches the sink.
   if (required < 1.0f) {
-    const float slope = (required - gain_) / kLookaheadSamples;
+    const float slope = (required - gain_) / kAttackSamples;
     for (int i = 1; i < kLookaheadSamples; ++i) {
       Frame &future = delay_[(delayHead_ + i) % kLookaheadSamples];
-      future.bound = std::min(future.bound, gain_ + slope * i);
+      future.bound = std::min(future.bound, gain_ + slope * std::min(i, kAttackSamples));
     }
   }
   delay_[delayHead_] = {left, right, required};

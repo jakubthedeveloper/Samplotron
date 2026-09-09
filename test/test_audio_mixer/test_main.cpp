@@ -122,10 +122,29 @@ void test_aligned_full_scale_sines_remain_bounded_without_flat_tops() {
   }
   const auto y = render(voices);
   int nearPeakSamples = 0;
-  for (size_t i = 500; i < y.size(); ++i) {
-    TEST_ASSERT_FALSE(std::abs(y[i][0]) == 32767 && y[i][0] == y[i-1][0]);
+  double squaredError = 0;
+  double clippedSquaredError = 0;
+  // Include the first attack and the final delayed frames: excluding either
+  // hides limiter errors at start-up or when future input becomes silence.
+  for (size_t i = 0; i < y.size(); ++i) {
+    const int reference = voices[0][i][0];  // Ideal gain for 32 aligned voices: 1/32.
+    const int error = y[i][0] - reference;
+    squaredError += static_cast<double>(error) * error;
+    TEST_ASSERT_INT_WITHIN(128, reference, y[i][0]);
+    TEST_ASSERT_EQUAL_INT(y[i][0], y[i][1]);
+    if (std::abs(y[i][0]) >= 32760) ++nearPeakSamples;
+    if (i > 0) {
+      TEST_ASSERT_FALSE(std::abs(y[i][0]) == 32767 && y[i][0] == y[i-1][0]);
+    }
+    // Negative control: a prematurely clipped 32-voice sum must fail the same
+    // shape-error criterion even though all its samples fit within PCM16.
+    const int clipped = std::max(-32767, std::min(32767, reference * 32));
+    const int clippedError = clipped - reference;
+    clippedSquaredError += static_cast<double>(clippedError) * clippedError;
   }
   TEST_ASSERT_LESS_THAN(400, nearPeakSamples);
+  TEST_ASSERT_TRUE(std::sqrt(squaredError / y.size()) < 64.0);
+  TEST_ASSERT_TRUE(std::sqrt(clippedSquaredError / y.size()) > 10000.0);
 }
 
 void test_lookahead_and_release_on_sudden_overlap() {
