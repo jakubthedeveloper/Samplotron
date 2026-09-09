@@ -10,8 +10,9 @@ namespace {
 constexpr uint8_t kEs8388Addr = 0x10;
 constexpr uint32_t kCodecI2cClockHz = 400000U;
 
-// ES8388 analog output volume registers use a 0..0x21 scale.
-constexpr uint8_t kAnalogOutputVolumeMaxCode = 0x21;
+// Use unity analog gain with the full-level digital mixer: 0x1E = 0 dB.
+// The previous 0x21 (+4.5 dB) boosted an already attenuated digital signal.
+constexpr uint8_t kAnalogOutputPlaybackCode = 0x1E;
 // ES8388 DAC digital volume uses attenuation codes where 0 is 0 dB and 96 is ~-96 dB.
 constexpr uint8_t kDacVolumeMaxAttenuationCode = 96;
 
@@ -65,14 +66,14 @@ bool codecRead(uint8_t reg, uint8_t &val) {
 
 void setOut2Volume(uint8_t percent) {
   const uint8_t clamped = constrain(percent, 0, 100);
-  const uint8_t code = static_cast<uint8_t>((kAnalogOutputVolumeMaxCode * clamped) / 100U);
+  const uint8_t code = static_cast<uint8_t>((kAnalogOutputPlaybackCode * clamped) / 100U);
   codecWrite(kRegOut2Left, code);
   codecWrite(kRegOut2Right, code);
 }
 
 void setOut1Volume(uint8_t percent) {
   const uint8_t clamped = constrain(percent, 0, 100);
-  const uint8_t code = static_cast<uint8_t>((kAnalogOutputVolumeMaxCode * clamped) / 100U);
+  const uint8_t code = static_cast<uint8_t>((kAnalogOutputPlaybackCode * clamped) / 100U);
   codecWrite(kRegOut1Left, code);
   codecWrite(kRegOut1Right, code);
 }

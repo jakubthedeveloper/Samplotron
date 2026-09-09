@@ -28,6 +28,9 @@ void tearDown() {}
 void test_startup_preserves_control_bits_while_muted() {
   TEST_ASSERT_TRUE(CodecES8388::init());
   TEST_ASSERT_EQUAL_HEX8(0x26, gCodecWire.registers[0x19]);
+  for (int reg = 0x2E; reg <= 0x31; ++reg) {
+    TEST_ASSERT_EQUAL_HEX8(0x1E, gCodecWire.registers[reg]);
+  }
   TEST_ASSERT_EQUAL_INT(LOW, amplifierState);
   int controlWrites = 0;
   for (const auto &write : gCodecWire.writes) {

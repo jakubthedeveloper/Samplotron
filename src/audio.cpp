@@ -32,8 +32,8 @@ Audio::~Audio() {
 
   delete impl_->mixer;
   impl_->mixer = nullptr;
-  delete impl_->limitedOut;
-  impl_->limitedOut = nullptr;
+  delete impl_->waveformOut;
+  impl_->waveformOut = nullptr;
   delete impl_->out;
   impl_->out = nullptr;
 
@@ -59,11 +59,11 @@ bool Audio::begin() {
   impl_->out->SetPinout(Pins::I2S_BCLK, Pins::I2S_LRC, Pins::I2S_DOUT);
   impl_->out->SetGain(1.0f);
 
-  impl_->limitedOut =
-      new AudioInternal::SimpleLimiterAudioOutput(impl_->out, &impl_->waveformCapture);
-  if (!impl_->limitedOut) {
-    delete impl_->limitedOut;
-    impl_->limitedOut = nullptr;
+  impl_->waveformOut =
+      new AudioInternal::WaveformAudioOutput(impl_->out, &impl_->waveformCapture);
+  if (!impl_->waveformOut) {
+    delete impl_->waveformOut;
+    impl_->waveformOut = nullptr;
     delete impl_->out;
     impl_->out = nullptr;
     delete impl_;
@@ -71,10 +71,11 @@ bool Audio::begin() {
     return false;
   }
 
-  impl_->mixer = new AudioOutputMixer(AudioInternal::kMixerBufferSamples, impl_->limitedOut);
+  static_assert(kVoiceCount == AudioInternal::SamplerMixer::kMaxInputs, "Mixer voice capacity mismatch");
+  impl_->mixer = new AudioInternal::SamplerMixer(AudioInternal::kMixerBufferSamples, impl_->waveformOut);
   if (!impl_->mixer) {
-    delete impl_->limitedOut;
-    impl_->limitedOut = nullptr;
+    delete impl_->waveformOut;
+    impl_->waveformOut = nullptr;
     delete impl_->out;
     impl_->out = nullptr;
     delete impl_;
@@ -85,8 +86,8 @@ bool Audio::begin() {
   if (!impl_->streamManager.begin(kVoiceCount)) {
     delete impl_->mixer;
     impl_->mixer = nullptr;
-    delete impl_->limitedOut;
-    impl_->limitedOut = nullptr;
+    delete impl_->waveformOut;
+    impl_->waveformOut = nullptr;
     delete impl_->out;
     impl_->out = nullptr;
     delete impl_;
@@ -103,6 +104,8 @@ bool Audio::begin() {
 
     if (voice.wav && voice.ramSource && voice.stub && voice.budgetedOut) {
       voice.stub->SetGain(1.0f);
+    } else {
+      return false;
     }
   }
 
@@ -123,7 +126,6 @@ void Audio::update() {
   const uint32_t nowUs = micros();
 
   AudioInternal::refreshStats(impl_);
-  AudioInternal::updateDynamicMixGain(impl_, nowUs);
 
   bool stateChanged = false;
 
@@ -162,7 +164,7 @@ void Audio::update() {
       voice.budgetedOut->resetBudget(AudioInternal::kVoiceLoopSampleBudget);
     }
 
-    AudioInternal::updateVoiceGain(voice, impl_->dynamicMixGain, nowUs);
+    AudioInternal::updateVoiceGain(voice, nowUs);
 
     if (!voice.wav->loop()) {
       if (voice.stopping || !voice.loopEnabled || !AudioInternal::restartVoiceLoop(impl_, i)) {

@@ -150,7 +150,7 @@ Notes:
 - `panic_note`: optional `0..127`; when received as MIDI NOTE ON, all active voices are quickly faded out
 - `playback_mode`: optional `"shot"` or `"loop"` stored per assignment/sample
 - `volume`: clamped to `0..100`
-- `volume = 100`: maximum sample setting; the engine applies `kPerVoiceVolumeScale = 0.65` before dynamic mixer headroom
+- `volume = 100`: unity per-voice gain; a single sample keeps its original level (no automatic normalization of quiet WAV files)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
 - maximum assignments in the settings structure: `128`; the UI catalog holds at most `32` samples and assigns each sample to one note
 - without a readable configuration, loading begins from defaults: no assignments, no panic note, a 1 MiB RAM budget, and one-shot playback
@@ -183,7 +183,7 @@ Playback engine behavior:
 - if incoming MIDI NOTE ON matches configured panic note, all currently active voices are quickly faded out and pending trigger backlog is cleared,
 - works for both SD-streamed and RAM-backed sample playback,
 - voice update loop applies bounded per-voice decode budget (`kVoiceLoopSampleBudget`) to keep scheduling predictable,
-- per-voice mixer gain uses dynamic headroom (`kDynamicMixMinGain..kDynamicMixMaxGain`) based on active voice count; master output passes through a limiter with a threshold of `0.995` full scale and unity make-up gain (`1.0`).
+- per-voice gain follows `VOL / 100` in floating point. The 32-input `SamplerMixer` sums before limiting; it never narrows an overloaded sum to PCM16 first. A stereo-linked peak limiter uses 64 frames of look-ahead (1.45 ms at 44.1 kHz), linear predictive gain bounds, and a 50 ms exponential release. It reduces gain only around overloads, including the look-ahead and release intervals.
 - trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
 
 Important behavior:
@@ -191,6 +191,23 @@ Important behavior:
 - RAM pool budget is "locked" after the first `prepare()` (`sample_ram_manager.cpp`),
 - changing `sample_ram_budget_bytes` in the same runtime session is recorded in the preparation result as `fixedBudgetMismatch`,
 - a real budget change requires a device reboot.
+
+### Mixing level policy
+
+| Method | Single voice | Overlapping voices | Decision |
+| --- | --- | --- | --- |
+| Divide the sum by active voice count `N` | Unity at `N=1` | Bounds normalized inputs, but even silent active voices turn down the mix | Rejected |
+| Divide by `sqrt(N)` | Unity at `N=1` | Compensates average power for uncorrelated sources; aligned peaks can still overflow | Insufficient as peak protection |
+| Hard/soft clipping | Depends on curve | Changes the waveform to fit the range | Rejected as the main overload control |
+| Wide sum + look-ahead limiter | Unity below ceiling after release recovers | Attenuates the whole mix when actual peaks require it | Implemented |
+
+Summation and the distinction between correlated amplitude and uncorrelated power are described in [Miller Puckette, Superposing Signals](https://msp.ucsd.edu/techniques/latest/book-html/node13.html). For nonlinear clipping see [Julius O. Smith, Soft Clipping](https://www.dsprelated.com/freebooks/pasp/Soft_Clipping.html). The selected approach follows the look-ahead limiting principle described by [FFmpeg alimiter](https://ffmpeg.org/ffmpeg-filters.html#alimiter), implemented locally for the ESP32 sample pipeline rather than running FFmpeg on the device.
+
+The limiter stores a linked gain bound for each delayed stereo frame. An over-ceiling incoming frame schedules a linear bound from the current gain to its required gain across the preceding 64 frames. This anticipates attenuation and also caps recovery before a subsequent peak. Overlapping bounds take their minimum; release can never exceed the bound for the current frame. The bound comes from the **unclipped float sum**, so both aligned peaks and cancellation are handled before conversion. Rejected sink writes leave the mix, delay line, gain envelope and waveform capture unchanged. Playback tails drain during idle; I2S remains running with zeros. A reused input appends after its queued tail, or starts at the current mix position if that tail has drained.
+
+At `VOL=100` a single voice now has unity digital gain instead of about 0.22 (the old effective gain including 1/64 quantization). Removing the old analog +4.5 dB boost gives roughly **8.7 dB higher single-voice output** below limiting, for the same WAV and external settings. This is a calculation, not an analog measurement. Quiet source files remain quiet; their dynamics are preserved. Peaks can briefly reduce other sounds in the same mix, and the 50 ms release means a lone voice immediately after an overload may still be attenuated.
+
+The guarantee is a bounded **digital sample peak**, not an oversampled true-peak limit or a guarantee against transformer/mixer analog overload. [EBU peak guidance](https://qc.ebu.io/items/0084B/) distinguishes reconstructed true peaks from PCM sample peaks. Keep `CHIPPOWER=0x00`, which was confirmed quiet on this board. Verify the new level on hardware with single and overlapping samples, including bass-heavy material through the 600:600 transformer. Start the external volume low. CPU/SD throughput at high polyphony still requires an on-device check.
 
 ## 7. UI and Device Interaction
 
@@ -259,9 +276,14 @@ Assignment rules:
 - Retrigger fade-out (older voices in same group): `kRetriggerFadeOutUs = 6000`
 - Default control stop fade-out: `kDefaultStopFadeOutUs = 9000`
 - Decode budget per voice update: `kVoiceLoopSampleBudget = 96`
-- Per-voice volume scale: `kPerVoiceVolumeScale = 0.65`
-- Dynamic mix gain range: `0.125..0.35`
-- Limiter threshold / make-up gain / release: `0.995` / `1.0` / `0.030 s`
+### `include/sampler_mixer.h`
+
+- Mixer inputs: `kMaxInputs = 32`
+- Per-voice gain: `VOL / 100`, no fixed attenuation or voice-count divisor
+- PCM output ceiling: `±32767` (negative full scale is limited by one LSB)
+- Look-ahead: `64` samples at fixed `44100 Hz`; other rates are rejected
+- Release time constant: `0.050 s`
+- Analog ES8388 outputs: `0x1E` (0 dB), replacing the previous +4.5 dB boost now that the digital mixer uses the full range
 
 ### `src/trigger_engine.cpp`
 
@@ -367,6 +389,8 @@ Main firmware serial output is limited to keypad initialization and key presses 
 - `src/active_sample_registry.cpp`: final active-sample registry after fallback handling
 - `src/audio.cpp`: audio engine initialization, update loop, and public playback/control API
 - `src/audio_voice_engine.cpp`: voice allocation, oldest-voice stealing, retrigger fades, SD/RAM voice setup, and loop restart
-- `src/audio_output_chain.cpp`: RAM WAV source, per-voice decode budget and fades, I2S rate handling, limiter, and waveform capture
+- `src/audio_output_chain.cpp`: RAM WAV source, I2S rate handling, and waveform capture
+- `src/budgeted_audio_output.cpp`: per-voice decode budget and fades, committed only after sample acceptance
+- `src/sampler_mixer.cpp`: float summation, 32 mixer inputs, look-ahead peak limiting before PCM16 conversion
 - `include/audio_internal.h`: shared engine state and audio tuning constants
 - `src/stream_manager.cpp`: per-voice SD stream source wrappers and stream diagnostics

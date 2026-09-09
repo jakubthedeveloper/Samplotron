@@ -9,27 +9,6 @@ namespace AudioInternal {
 
 namespace {
 
-float clamp01(float value) {
-  if (value < 0.0f) return 0.0f;
-  if (value > 1.0f) return 1.0f;
-  return value;
-}
-
-float dynamicMixGainTarget(uint8_t activeVoices) {
-  if (activeVoices == 0) return kDynamicMixMaxGain;
-
-  const float gain = 1.0f / static_cast<float>(activeVoices);
-  if (gain < kDynamicMixMinGain) return kDynamicMixMinGain;
-  if (gain > kDynamicMixMaxGain) return kDynamicMixMaxGain;
-  return gain;
-}
-
-float smoothGain(float current, float target, uint32_t dtUs, uint32_t timeConstantUs) {
-  if (dtUs == 0 || timeConstantUs == 0) return target;
-  const float alpha = clamp01(static_cast<float>(dtUs) / static_cast<float>(timeConstantUs));
-  return current + ((target - current) * alpha);
-}
-
 float voiceFadeInRatio(const VoiceState &voice, uint32_t nowUs) {
   if (!voice.active) return 0.0f;
   if (voice.fadeInUs == 0) return 1.0f;
@@ -55,7 +34,7 @@ float voiceFadeOutRatio(const VoiceState &voice, uint32_t nowUs) {
 
 float gainFromVolume(uint8_t volume) {
   const uint8_t clamped = (volume > kVolumeScaleMax) ? kVolumeScaleMax : volume;
-  return (static_cast<float>(clamped) / static_cast<float>(kVolumeScaleMax)) * kPerVoiceVolumeScale;
+  return (static_cast<float>(clamped) / static_cast<float>(kVolumeScaleMax));
 }
 
 void stopVoice(VoiceState &voice) {
@@ -140,34 +119,17 @@ void refreshStats(EngineState *impl) {
   }
 }
 
-void updateDynamicMixGain(EngineState *impl, uint32_t nowUs) {
-  if (!impl) return;
-
-  const float target = dynamicMixGainTarget(impl->stats.activeVoices);
-  const uint32_t dtUs = (impl->dynamicMixLastUs == 0) ? 0 : (nowUs - impl->dynamicMixLastUs);
-  impl->dynamicMixLastUs = nowUs;
-
-  if (dtUs == 0) {
-    impl->dynamicMixGain = target;
-    return;
-  }
-
-  const uint32_t timeConstantUs =
-      (target < impl->dynamicMixGain) ? kDynamicMixReleaseUs : kDynamicMixAttackUs;
-  impl->dynamicMixGain = smoothGain(impl->dynamicMixGain, target, dtUs, timeConstantUs);
-}
-
-void updateVoiceGain(VoiceState &voice, float dynamicMixGain, uint32_t nowUs) {
+void updateVoiceGain(VoiceState &voice, uint32_t nowUs) {
   if (!voice.active || !voice.stub) return;
   if (voice.stopping) {
     // During stop, keep mixer gain fixed and rely only on per-sample fade envelope.
-    // This avoids stepwise gain changes from dynamic mix updates ("zipper" artifacts).
+    // The fade envelope advances only when the mixer accepts a sample.
     return;
   }
 
   // Fade-out is handled sample-by-sample in BudgetedAudioOutput.
   const float fadeOutRatio = voiceFadeOutRatio(voice, nowUs);
-  const float gain = voice.targetGain * dynamicMixGain * voiceFadeInRatio(voice, nowUs) * fadeOutRatio;
+  const float gain = voice.targetGain * voiceFadeInRatio(voice, nowUs) * fadeOutRatio;
   if (fabsf(gain - voice.currentGain) < 0.0005f) return;
 
   voice.currentGain = gain;
@@ -273,7 +235,7 @@ bool beginVoiceFromPath(EngineState *impl,
   voice.stopping = false;
   voice.stopStartUs = 0;
   voice.fadeOutUs = 0;
-  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
+  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain);
   voice.budgetedOut->resetFadeEnvelope();
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
@@ -327,7 +289,7 @@ bool beginVoiceFromRam(EngineState *impl,
   voice.stopping = false;
   voice.stopStartUs = 0;
   voice.fadeOutUs = 0;
-  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain * impl->dynamicMixGain);
+  voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain);
   voice.budgetedOut->resetFadeEnvelope();
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {

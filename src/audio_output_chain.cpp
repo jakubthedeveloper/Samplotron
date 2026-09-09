@@ -137,102 +137,6 @@ bool FreshStartAudioGeneratorWAV::stop() {
   return ok;
 }
 
-BudgetedAudioOutput::BudgetedAudioOutput(AudioOutput *sink) : sink_(sink) {}
-
-void BudgetedAudioOutput::resetBudget(uint16_t sampleCount) { budgetSamples_ = sampleCount; }
-
-void BudgetedAudioOutput::resetFadeEnvelope() {
-  fadeEnvelopeQ15_ = 32768;
-  fadeStepQ15_ = 0;
-  fadeSamplesRemaining_ = 0;
-  fadeActive_ = false;
-  fadeComplete_ = false;
-}
-
-void BudgetedAudioOutput::beginFadeOut(uint32_t fadeOutUs) {
-  if (fadeOutUs == 0) {
-    fadeEnvelopeQ15_ = 0;
-    fadeStepQ15_ = 0;
-    fadeSamplesRemaining_ = 0;
-    fadeActive_ = false;
-    fadeComplete_ = true;
-    return;
-  }
-
-  if (sampleRateHz_ <= 0) {
-    sampleRateHz_ = 44100;
-  }
-
-  uint64_t fadeSamples =
-      (static_cast<uint64_t>(sampleRateHz_) * static_cast<uint64_t>(fadeOutUs) + 999999ULL) /
-      1000000ULL;
-  if (fadeSamples == 0) {
-    fadeSamples = 1;
-  }
-
-  fadeSamplesRemaining_ = static_cast<uint32_t>(fadeSamples);
-  fadeStepQ15_ = (fadeSamplesRemaining_ > 0) ? (fadeEnvelopeQ15_ / fadeSamplesRemaining_) : fadeEnvelopeQ15_;
-  if (fadeStepQ15_ == 0 && fadeEnvelopeQ15_ > 0) {
-    fadeStepQ15_ = 1;
-  }
-  fadeActive_ = true;
-  fadeComplete_ = false;
-}
-
-bool BudgetedAudioOutput::isFadeOutComplete() const { return fadeComplete_; }
-
-bool BudgetedAudioOutput::SetRate(int hz) {
-  if (hz > 0) {
-    sampleRateHz_ = hz;
-  }
-  return sink_ && sink_->SetRate(hz);
-}
-
-bool BudgetedAudioOutput::SetChannels(int channels) { return sink_ && sink_->SetChannels(channels); }
-
-bool BudgetedAudioOutput::begin() { return sink_ && sink_->begin(); }
-
-bool BudgetedAudioOutput::stop() {
-  budgetSamples_ = 0;
-  resetFadeEnvelope();
-  return sink_ && sink_->stop();
-}
-
-bool BudgetedAudioOutput::loop() { return sink_ && sink_->loop(); }
-
-bool BudgetedAudioOutput::ConsumeSample(int16_t sample[2]) {
-  if (!sink_ || budgetSamples_ == 0) return false;
-
-  uint32_t envelopeQ15 = fadeEnvelopeQ15_;
-  if (fadeActive_) {
-    envelopeQ15 = fadeEnvelopeQ15_;
-    if (fadeSamplesRemaining_ > 0) {
-      if (fadeEnvelopeQ15_ > fadeStepQ15_) {
-        fadeEnvelopeQ15_ -= fadeStepQ15_;
-      } else {
-        fadeEnvelopeQ15_ = 0;
-      }
-      fadeSamplesRemaining_--;
-    }
-    if (fadeSamplesRemaining_ == 0) {
-      fadeEnvelopeQ15_ = 0;
-      fadeStepQ15_ = 0;
-      fadeActive_ = false;
-      fadeComplete_ = true;
-    }
-  }
-
-  if (envelopeQ15 < 32768U) {
-    const int32_t left = (static_cast<int32_t>(sample[0]) * static_cast<int32_t>(envelopeQ15) + 16384) >> 15;
-    const int32_t right = (static_cast<int32_t>(sample[1]) * static_cast<int32_t>(envelopeQ15) + 16384) >> 15;
-    sample[0] = static_cast<int16_t>(left);
-    sample[1] = static_cast<int16_t>(right);
-  }
-
-  budgetSamples_--;
-  return sink_->ConsumeSample(sample);
-}
-
 StableAudioOutputI2S::StableAudioOutputI2S(int port, int outputMode, int dmaCount, int useApll)
     : AudioOutputI2S(port, outputMode, dmaCount, useApll) {}
 
@@ -253,72 +157,35 @@ uint32_t StableAudioOutputI2S::skippedRateSetCalls() const { return skippedRateS
 
 uint32_t StableAudioOutputI2S::appliedRateSetCalls() const { return appliedRateSetCalls_; }
 
-SimpleLimiterAudioOutput::SimpleLimiterAudioOutput(AudioOutput *sink,
+WaveformAudioOutput::WaveformAudioOutput(AudioOutput *sink,
                                                    WaveformCaptureState *waveformCapture)
-    : sink_(sink), waveformCapture_(waveformCapture) {
-  updateSmoothing();
-}
+    : sink_(sink), waveformCapture_(waveformCapture) {}
 
-bool SimpleLimiterAudioOutput::SetRate(int hz) {
-  sampleRateHz_ = (hz > 0) ? hz : sampleRateHz_;
-  updateSmoothing();
+bool WaveformAudioOutput::SetRate(int hz) {
   return sink_ && sink_->SetRate(hz);
 }
 
-bool SimpleLimiterAudioOutput::SetChannels(int channels) {
+bool WaveformAudioOutput::SetChannels(int channels) {
   return sink_ && sink_->SetChannels(channels);
 }
 
-bool SimpleLimiterAudioOutput::begin() { return sink_ && sink_->begin(); }
+bool WaveformAudioOutput::begin() { return sink_ && sink_->begin(); }
 
-bool SimpleLimiterAudioOutput::stop() {
-  limiterGain_ = 1.0f;
+bool WaveformAudioOutput::stop() {
   return sink_ && sink_->stop();
 }
 
-bool SimpleLimiterAudioOutput::loop() { return sink_ && sink_->loop(); }
+bool WaveformAudioOutput::loop() { return sink_ && sink_->loop(); }
 
-bool SimpleLimiterAudioOutput::ConsumeSample(int16_t sample[2]) {
+bool WaveformAudioOutput::ConsumeSample(int16_t sample[2]) {
   if (!sink_) return false;
-
-  float left = static_cast<float>(sample[0]) / 32768.0f;
-  float right = static_cast<float>(sample[1]) / 32768.0f;
-
-  // Recover perceived loudness after conservative per-voice headroom.
-  left *= kLimiterMakeupGain;
-  right *= kLimiterMakeupGain;
-
-  float peak = fabsf(left);
-  const float rightAbs = fabsf(right);
-  if (rightAbs > peak) peak = rightAbs;
-
-  float desiredGain = 1.0f;
-  if (peak > kLimiterThreshold && peak > 0.0f) {
-    desiredGain = kLimiterThreshold / peak;
-  }
-
-  if (desiredGain < limiterGain_) {
-    // Clamp immediately to avoid transient clipping distortion.
-    limiterGain_ = desiredGain;
-  } else {
-    limiterGain_ = desiredGain + (releaseCoeff_ * (limiterGain_ - desiredGain));
-  }
-
-  left *= limiterGain_;
-  right *= limiterGain_;
-
-  if (left > 1.0f) left = 1.0f;
-  if (left < -1.0f) left = -1.0f;
-  if (right > 1.0f) right = 1.0f;
-  if (right < -1.0f) right = -1.0f;
-
-  sample[0] = static_cast<int16_t>(left * 32767.0f);
-  sample[1] = static_cast<int16_t>(right * 32767.0f);
+  int16_t output[2] = {sample[0], sample[1]};
+  if (!sink_->ConsumeSample(output)) return false;
   captureWaveformSample(sample);
-  return sink_->ConsumeSample(sample);
+  return true;
 }
 
-void SimpleLimiterAudioOutput::captureWaveformSample(const int16_t sample[2]) {
+void WaveformAudioOutput::captureWaveformSample(const int16_t sample[2]) {
   if (!waveformCapture_) return;
 
   waveformCapture_->decimationCounter++;
@@ -339,11 +206,6 @@ void SimpleLimiterAudioOutput::captureWaveformSample(const int16_t sample[2]) {
     waveformCapture_->count++;
   }
   portEXIT_CRITICAL(&waveformCapture_->lock);
-}
-
-void SimpleLimiterAudioOutput::updateSmoothing() {
-  const float sampleRate = static_cast<float>((sampleRateHz_ > 0) ? sampleRateHz_ : 44100);
-  releaseCoeff_ = expf(-1.0f / (sampleRate * kLimiterReleaseSeconds));
 }
 
 bool copyWaveformSnapshot(const WaveformCaptureState &capture, Audio::WaveformSnapshot &snapshot) {

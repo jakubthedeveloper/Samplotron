@@ -60,7 +60,7 @@ Use this note to fade out every sound and clear pending triggers during live pla
 
 ### Volume
 
-Trigger or preview a sample, select `VOL` on the main screen, and rotate the right encoder to set its level from 0 to 100 in steps of 5. The new level applies to subsequent triggers. MIDI velocity does not change the volume.
+Trigger or preview a sample, select `VOL` on the main screen, and rotate the right encoder to set its level from 0 to 100 in steps of 5. The new level applies to subsequent triggers. MIDI velocity does not change the volume. At `VOL=100`, a single sample plays at its original digital level. When sounds overlap, an automatic limiter reduces the mixed level only as needed to keep digital sample peaks within full scale; quiet overlaps do not automatically turn everything down. Its short release can briefly keep the mix quieter after a loud peak. Start with the physical output volume low after updating from older firmware: playback is now louder.
 
 ![Volume screen](screenshots/vol.jpg)
 
