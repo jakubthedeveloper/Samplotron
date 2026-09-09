@@ -64,7 +64,7 @@ Saving stores assignments, assigned sample volumes, playback modes, and the pani
 | Component | Connection |
 | --- | --- |
 | SD card over SPI | CS GPIO13, MISO GPIO2, MOSI GPIO15, SCK GPIO14 |
-| ES8388 audio over I2S | BCLK GPIO27, WS GPIO25, DOUT GPIO26; amplifier enable GPIO21 |
+| ES8388 audio over I2S | BCLK GPIO27, WS GPIO25, DOUT GPIO26; speaker amplifier enable GPIO21 held LOW (off) |
 | ES8388 control bus | SDA GPIO33, SCL GPIO32; address `0x10` |
 | SSD1309 OLED and MCP23017 shared I2C bus | SDA GPIO23, SCL GPIO18; OLED `0x3C` or `0x3D`, MCP23017 `0x27` |
 | Left encoder | MCP23017 GPA0 / GPA1 / GPA2: A / B / switch |
@@ -74,7 +74,9 @@ Saving stores assignments, assigned sample volumes, playback modes, and the pani
 
 Pin assignments are defined in [include/pins.h](include/pins.h); keypad note mapping is in [include/keypad_mapping.h](include/keypad_mapping.h). The [technical documentation](docs/documentation.md#2-pinout-and-buses) includes interrupt pins, keypad scanning details, and hardware notes.
 
-The current hardware revision uses a 600:600 audio isolation transformer between one output channel and a jack isolated from the chassis, plus a Hi-Link `B0505S-3WR3` DC/DC isolator in the power path, to reduce ground-loop noise with an external mixer.
+The current hardware revision uses a 600:600 audio isolation transformer between **one channel of headphones out (mono)** and a jack isolated from the chassis, plus a Hi-Link `B0505S-3WR3` DC/DC isolator in the power path, to reduce ground-loop noise with an external mixer.
+
+Take tip (left) or ring (right), plus sleeve (headphone ground), from the headphones TRS connector. Leave the other channel unconnected; do not short L and R together. The separate L/R speaker terminals are driven by bridge-tied Class-D amplifiers: they carry a switching, speaker-level signal, and neither terminal is ground. They are unsuitable for this transformer-to-mixer path. Using headphones out bypasses these amplifiers; the hardware change noticeably improved sound quality. Firmware keeps the speaker amplifiers, line-in and microphone capture paths disabled. See [audio wiring and codec configuration](docs/documentation.md#audiopower-isolation-noise-mitigation).
 
 ### Preparing samples and first use
 

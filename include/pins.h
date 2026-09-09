@@ -13,7 +13,7 @@ constexpr int I2S_DOUT = 26;
 
 constexpr int I2C_SCL = 32;
 constexpr int I2C_SDA = 33;
-constexpr int PA_EN = 21;
+constexpr int PA_EN = 21;  // LOW keeps unused L/R speaker amplifiers off.
 constexpr int MIDI_IN = 22;
 
 constexpr int OLED_SCK = 18;

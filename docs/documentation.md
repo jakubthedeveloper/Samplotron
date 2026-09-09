@@ -29,7 +29,7 @@ Source of truth: `include/pins.h`.
 - `BCLK`: GPIO27
 - `LRC/WS`: GPIO25
 - `DOUT`: GPIO26
-- `PA_EN`: GPIO21
+- `PA_EN`: GPIO21, held LOW to disable the unused L/R speaker amplifiers
 
 ### Codec control I2C (ES8388)
 
@@ -57,9 +57,27 @@ Source of truth: `include/pins.h`.
 
 Current hardware revision includes additional isolation elements to reduce audible noise caused by ground loops between Samplotron and an external mixer:
 
-- audio output path: `600:600` audio isolation transformer inserted between one output channel and the output jack,
+- audio output path: **one channel of headphones out (mono)** → `600:600` audio isolation transformer → volume potentiometer → isolated mono output jack,
 - output jack: isolated from chassis,
 - power path: Hi-Link `B0505S-3WR3` DC/DC isolator.
+
+Use a TRS plug at headphones out: tip is left, ring is right, sleeve is headphone ground. Connect the transformer's primary between **either tip or ring** and sleeve. Leave the other channel unconnected; never short left and right together. The secondary feeds the volume potentiometer and mono jack, and stays electrically isolated from board ground and chassis.
+
+Do not use the separate L/R **speaker terminals** for this path. They are outputs of bridge-tied Class-D amplifiers: both terminals are active, neither is ground, and the signal includes switching components at speaker level. A 600:600 audio transformer is not a Class-D output filter or a speaker-to-line converter; this connection can cause excessive level, buzz and distortion. Headphones out takes the signal before the speaker amplifiers. Moving the existing transformer to this connector noticeably improved sound quality on the current device.
+
+The [Ai-Thinker AudioKit V2.2 schematic (mirror)](https://github.com/johnradford49/ESP32-Audio-Kit/blob/main/esp32-audio-kit_v2.2_sch.pdf) shows the separate headphone and speaker paths. ES8388 register definitions are in the [Everest Semiconductor datasheet](https://www.armdesigner.com/download/ES8388_datasheet.pdf), sections 6.1.3–6.1.5 and 6.3.17–6.3.21.
+
+Playback-only configuration in `src/codec_es8388.cpp`:
+
+- `PA_EN = LOW` throughout initialization and unmute: external L/R speaker amplifiers stay shut down.
+- `CHIPPOWER (0x02) = 0x00`: retain the original board clock/reference state. Analog capture remains powered down independently by `ADCPOWER`; this does not enable line-in or microphone capture.
+- `ADCPOWER (0x03) = 0xFC`: both analog inputs, both ADCs, microphone bias and ADC bias generator powered down. This disables capture from line-in and microphones.
+- `ADCCONTROL7 (0x0F) = 0x24`: ADC digital output muted as well.
+- Left/right output mixers (`0x27`, `0x2A`) retain DAC playback with analog-input bypass disabled (bit 6 clear).
+- `DACPOWER (0x04) = 0x3C`: both DAC channels and output pairs remain available, so either headphone channel can be used. The board schematic does not expose the internal ES8388-to-module output mapping; do not assume output pair 1 means speakers and pair 2 means headphones. Speaker shutdown uses the independent `PA_EN` pin.
+- DAC soft-ramp/mute profile stays `0x26` during startup and `0x22` after I2S starts.
+
+Hardware verification (2026-09-09): `CHIPPOWER = 0xAA` introduced output noise on the current device. Restoring this register alone to `0x00` removed the noise, as confirmed by the user after flashing. Keep `0x00` for this board profile; line-in, microphones and ADC analog blocks remain disabled through `ADCPOWER = 0xFC`, and speaker amplifiers remain off through `PA_EN = LOW`. This comparison identifies the problematic register setting, but does not establish the internal electrical mechanism. Host tests verify register programming; analog noise performance requires an on-device check.
 
 ## 3. Encoder Mapping (MCP23017 GPA)
 

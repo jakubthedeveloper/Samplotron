@@ -2,6 +2,8 @@
 
 This guide focuses on making music with Samplotron: loading sounds, mapping them to MIDI, shaping playback, and saving your setup. For SD card preparation and firmware installation, start with the [README](../README.md#preparing-samples-and-first-use).
 
+Connect the isolated mono output jack to your mixer and start at a low monitoring volume. Inside Samplotron, this jack is fed from **one channel of headphones out through a 600:600 transformer**. Do not use the AudioKit's separate L/R speaker terminals: their Class-D amplifiers produce a switching, speaker-level signal unsuitable for this connection. Line-in and microphones are disabled; load samples from the SD card.
+
 ## 1. Power On and Wait for Ready
 
 When you boot the device, you will first see loading status.

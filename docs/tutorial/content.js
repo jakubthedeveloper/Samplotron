@@ -568,17 +568,17 @@ window.SAMPLOTRON_GUIDE = {
     {
       "id": "audio-connect",
       "title": "03 / Connect the audio output",
-      "caption": "With power disconnected, connect your monitoring equipment to the appropriate analog output on the Audio Kit. Start with a low monitoring volume.",
+      "caption": "With power disconnected, connect one headphones-out channel (mono) through the 600:600 transformer to the isolated output jack and mixer. Start with a low monitoring volume.",
       "left": "esp",
       "right": "audio",
       "wires": [
         {
-          "source": "ANALOG OUTPUT*",
-          "target": "MONITOR INPUT*",
+          "source": "HEADPHONES: L OR R",
+          "target": "600:600 → MONITOR",
           "color": "#74e3b4"
         }
       ],
-      "note": "*Exact jack and cable depend on the board revision. ES8388 is onboard. The transformer-isolated output variant needs a separate confirmed schematic.",
+      "note": "TRS: tip (L) OR ring (R), plus sleeve (ground), to transformer primary; secondary to volume pot and isolated mono jack. Leave the other channel unconnected. Do not use L/R speaker terminals: Class-D bridge outputs add switching noise and excessive level. Speaker amplifiers, line-in and microphones are disabled.",
       "command": "",
       "duration": 25,
       "screenCues": [],
