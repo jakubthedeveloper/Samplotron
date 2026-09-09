@@ -16,6 +16,7 @@ class SamplerRuntime {
 
   void applyAssignmentsToUi(Ui &ui, const SampleLibrary::Catalog &catalog) const;
   void collectAssignmentsFromUi(const Ui &ui, const SampleLibrary::Catalog &catalog);
+  void setCatalog(const SampleLibrary::Catalog *catalog) { catalog_ = catalog; }
   void rebuildPreparedSamples();
   bool saveSettingsToSd() const;
 
@@ -35,6 +36,7 @@ class SamplerRuntime {
   void loadClassifiedRamSamplesAndLog();
   void buildActiveRegistryAndLog();
 
+  const SampleLibrary::Catalog *catalog_ = nullptr;
   SettingsStore::SamplerSettings settings_;
   SampleClassifier::ClassificationReport classificationReport_;
   SampleRamManager::LoadReport ramLoadReport_;

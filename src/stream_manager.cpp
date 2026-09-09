@@ -2,6 +2,8 @@
 
 #include "AudioFileSource.h"
 #include "AudioFileSourceSD.h"
+#include "validated_wav_source.h"
+#include "sample_library.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -37,6 +39,14 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
     if (!opened) return false;
     return true;
   }
+
+  bool openValidated(const char *path, const WavValidation::Result &info) {
+    if (!info.playable() || !open(path)) return false;
+    if (view_.attach(this, info)) return true;
+    close();
+    return false;
+  }
+  AudioFileSource *validatedSource() { return &view_; }
 
   uint32_t read(void *data, uint32_t len) override {
     if (!open_ || !data || len == 0) return 0;
@@ -103,6 +113,7 @@ class StreamManager::BufferedSdSource : public AudioFileSource {
   }
 
   AudioFileSourceSD source_;
+  ValidatedWavSource view_;
   SemaphoreHandle_t sourceMutex_ = xSemaphoreCreateMutex();
   Diagnostics *diagnostics_ = nullptr;
   bool open_ = false;
@@ -115,12 +126,13 @@ StreamManager::~StreamManager() {
   shutdown();
 }
 
-bool StreamManager::begin(uint8_t streamCount) {
+bool StreamManager::begin(uint8_t streamCount, const SampleLibrary::Catalog *catalog) {
   shutdown();
   if (streamCount == 0 || streamCount > kMaxStreams) {
     return false;
   }
 
+  catalog_ = catalog;
   diagnostics_ = Diagnostics{};
   for (uint8_t i = 0; i < streamCount; i++) {
     streams_[i] = new BufferedSdSource(&diagnostics_);
@@ -144,12 +156,15 @@ void StreamManager::shutdown() {
 
 bool StreamManager::openStream(uint8_t streamId, const char *path) {
   if (streamId >= streamCount_ || !streams_[streamId]) return false;
-  return streams_[streamId]->open(path);
+  if (!catalog_) return false;
+  const int index = SampleLibrary::findIndexByPath(*catalog_, path);
+  if (!catalog_->playable(index)) return false;
+  return streams_[streamId]->openValidated(path, catalog_->validation[index]);
 }
 
 AudioFileSource *StreamManager::sourceForStream(uint8_t streamId) {
   if (streamId >= streamCount_) return nullptr;
-  return streams_[streamId];
+  return streams_[streamId]->validatedSource();
 }
 
 void StreamManager::closeStream(uint8_t streamId) {

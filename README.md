@@ -86,6 +86,8 @@ Take tip (left) or ring (right), plus sleeve (headphone ground), from the headph
 4. Open `LIB`, preview a sample, then hold the right button and send a MIDI note or press a keypad key to assign it.
 5. Trigger the sound, set `VOL` and `SHOT/LOOP`, then select `SAVE` before powering off.
 
+During boot, every loaded library entry (up to 32, including unassigned samples) is checked for the supported WAV format and valid file structure. The display shows progress and the rejected count. Rejected entries remain visible in `LIB` with `!` and a reason; they cannot play. Results are cached in RAM: restart after changing files on the SD card.
+
 No configuration file is required for first boot; without one, the device starts with no assignments, one-shot playback, and the default RAM budget.
 
 The repository includes a batch conversion command, requiring `ffmpeg` and Make:

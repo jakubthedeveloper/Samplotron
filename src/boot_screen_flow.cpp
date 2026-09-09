@@ -10,9 +10,11 @@ void BootScreenFlow::begin(DisplaySsd1309 *display, Input *input, Ui *ui) {
 void BootScreenFlow::render(bool loading,
                             int totalSamples,
                             int assignedSamples,
-                            int ramUsagePercent) {
+                            int ramUsagePercent, int checkedSamples, int rejectedSamples) {
   if (!display_) return;
 
+  model_.checkedSamples = checkedSamples;
+  model_.rejectedSamples = rejectedSamples;
   model_.loading = loading;
   model_.totalSamples = totalSamples;
   model_.assignedSamples = assignedSamples;

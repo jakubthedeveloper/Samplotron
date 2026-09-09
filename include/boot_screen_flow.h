@@ -11,7 +11,8 @@ class BootScreenFlow {
   static constexpr unsigned long kDefaultDismissTimeoutMs = 5000;
 
   void begin(DisplaySsd1309 *display, Input *input, Ui *ui);
-  void render(bool loading, int totalSamples, int assignedSamples, int ramUsagePercent);
+  void render(bool loading, int totalSamples, int assignedSamples, int ramUsagePercent,
+              int checkedSamples = 0, int rejectedSamples = 0);
   void waitForDismissOrTimeout(unsigned long timeoutMs = kDefaultDismissTimeoutMs);
 
  private:

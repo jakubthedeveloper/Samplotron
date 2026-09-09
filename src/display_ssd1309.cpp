@@ -98,13 +98,19 @@ void DisplaySsd1309::renderBootScreen(const BootScreenModel &model) {
   char line1[28];
   char line2[28];
   char line3[28];
-  snprintf(line1, sizeof(line1), "Samples total: %d", model.totalSamples);
+  snprintf(line1, sizeof(line1), "Samples:%d Rejected:%d", model.totalSamples, model.rejectedSamples);
   snprintf(line2, sizeof(line2), "Assigned:      %d", model.assignedSamples);
   snprintf(line3, sizeof(line3), "RAM used:      %d%%", model.ramUsagePercent);
   gDisplay.drawStr(0, 34, line1);
   gDisplay.drawStr(0, 44, line2);
   gDisplay.drawStr(0, 54, line3);
-  gDisplay.drawStr(0, 63, model.loading ? "Loading..." : "Ready");
+  char status[28];
+  if (model.loading && model.checkedSamples < model.totalSamples) {
+    snprintf(status, sizeof(status), "Checking WAV: %d/%d", model.checkedSamples, model.totalSamples);
+  } else {
+    snprintf(status, sizeof(status), "%s", model.loading ? "Loading..." : "Ready");
+  }
+  gDisplay.drawStr(0, 63, status);
 
   gDisplay.sendBuffer();
   dirty_ = false;
@@ -255,6 +261,7 @@ void DisplaySsd1309::renderLibrary(const Ui::RenderModel &model, const Ui &ui) {
 
       const bool selected = (sampleIndex == model.currentSampleIndex);
       String line = (selected ? "> " : "  ");
+      if (!ui.samplePlayable(sampleIndex)) line += "!";
       line += sampleLabel(sampleIndex, ui.sampleNameAt(sampleIndex));
       if (selected) {
         gDisplay.drawBox(0, y - 7, 128, 9);
@@ -289,13 +296,15 @@ void DisplaySsd1309::renderLibrary(const Ui::RenderModel &model, const Ui &ui) {
     } else {
       assigned += "--";
     }
-    gDisplay.drawStr(0, 47, assigned.c_str());
+    gDisplay.drawStr(0, 47, ui.samplePlayable(model.currentSampleIndex)
+                                ? assigned.c_str() : ui.sampleValidationLabel(model.currentSampleIndex));
   }
 
   gDisplay.setFont(u8g2_font_4x6_tf);
   gDisplay.drawStr(0, 57, model.libraryAssignsPanic ? "L clk:back L rot:mode"
                                                      : "L clk:back L rot:mode R:browse");
-  gDisplay.drawStr(0, 63, "R click: play  R hold: assign");
+  gDisplay.drawStr(0, 63, !model.libraryAssignsPanic && !ui.samplePlayable(model.currentSampleIndex)
+                                ? "Playback blocked: check WAV" : "R click: play  R hold: assign");
 }
 
 void DisplaySsd1309::renderAssign(const Ui::RenderModel &model, const Ui &ui) {

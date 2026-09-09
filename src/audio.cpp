@@ -83,7 +83,7 @@ bool Audio::begin() {
     return false;
   }
 
-  if (!impl_->streamManager.begin(kVoiceCount)) {
+  if (!impl_->streamManager.begin(kVoiceCount, catalog_)) {
     delete impl_->mixer;
     impl_->mixer = nullptr;
     delete impl_->waveformOut;

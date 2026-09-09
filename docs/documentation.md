@@ -117,8 +117,18 @@ Hardware verification (2026-09-09): `CHIPPOWER = 0xAA` introduced output noise o
 - `.wav` and `.WAV` are recognized,
 - file list is sorted alphabetically,
 - UI sample limit: `32` (the first 32 matching files encountered are collected, then sorted).
-- Assigned playback requires uncompressed PCM (`audioFormat = 1`), 16-bit, 44100 Hz, mono. Prepare every library sample in this format, including previews.
+- All playback paths require uncompressed PCM (`audioFormat = 1`), 16-bit, 44100 Hz, mono, including previews and stream fallback.
 - Use a FAT32 card. The conversion command in section 9 modifies files in place, including leading-silence trimming and gain adjustment.
+
+### Boot-time WAV validation
+
+Before playback tasks start, `SampleLibrary::loadFromSd()` validates every collected entry, including unassigned files. The boot screen displays `Checking WAV: n/N` and `Rejected`. Invalid entries stay in the library with `!` and a status (`BAD FORMAT`, `BAD WAV`, or `READ ERROR`); the playback router blocks them before enqueueing preview or MIDI triggers. Unchecked entries are also blocked. Valid entries continue to work.
+
+`wav_validation.cpp` checks RIFF/WAVE identification, exact RIFF/file size agreement, chunk boundaries and odd-byte padding, one `fmt ` chunk before one nonempty `data` chunk, supported PCM parameters, byte rate, block alignment, and whole PCM16 frames. Extended `fmt ` chunks must have a consistent extension length. Unknown chunks are skipped, including metadata after PCM; duplicate or truncated chunks are rejected. Files must fit the signed 32-bit playback seek range. Chunk padding follows the [RIFF specification](https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-).
+
+Validation reads headers and seeks past PCM and metadata payloads; it does not scan audio content, detect clicks/clipping, or guarantee that every PCM sector is readable. Each catalog entry caches status, PCM offset, and length in RAM. Assignment classification and saving reuse this cache. RAM preload reads the cached PCM range directly. SD streaming uses `ValidatedWavSource` to supply a canonical 44-byte header from memory and expose only the cached PCM range, avoiding on-disk header parsing at each trigger or loop restart. Opening the file, checking that the cached range still fits, and reading PCM still involve SD access during playback.
+
+Restart after changing files on the SD card. There is no runtime revalidation or hot-swap support; cache validity assumes files remain unchanged for the session. Validation covers the loaded library's existing 32-entry limit, not additional files outside that list.
 
 ## 5. `sampler_config.json` Configuration
 
@@ -163,7 +173,7 @@ Saving writes and parses the temporary JSON file before rotating the previous co
 
 Sample preparation pipeline:
 
-- MIDI-assigned samples are classified as `RAM` or `STREAM`,
+- MIDI-assigned samples are classified from cached boot validation as `RAM` or `STREAM`,
 - `RAM` is used only for WAV files that meet all conditions:
   - PCM format (`audioFormat = 1`),
   - `16-bit`,

@@ -38,6 +38,13 @@ class String {
   bool operator==(const char *other) const { return data_ == (other ? other : ""); }
   bool operator!=(const char *other) const { return !(*this == other); }
 
+  bool endsWith(const char *suffix) const {
+    const std::string s(suffix);
+    return data_.size() >= s.size() && data_.compare(data_.size() - s.size(), s.size(), s) == 0;
+  }
+  bool operator<(const String &other) const { return data_ < other.data_; }
+  friend String operator+(const char *prefix, const String &s) { return String(std::string(prefix) + s.data_); }
+
   int length() const { return static_cast<int>(data_.size()); }
 
   const char *c_str() const { return data_.c_str(); }

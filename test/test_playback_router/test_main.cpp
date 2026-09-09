@@ -1,4 +1,5 @@
 #include <unity.h>
+#include "../../src/wav_validation.cpp"
 
 #include <cstring>
 #include <deque>
@@ -95,11 +96,39 @@ Ui createUi() {
 SampleLibrary::Catalog createCatalog() {
   SampleLibrary::Catalog catalog;
   catalog.count = kSampleCount;
+  for (int i = 0; i < kSampleCount; ++i) catalog.validation[i].status = WavValidation::Status::Valid;
   catalog.names[0] = kNames[0];
   catalog.names[1] = kNames[1];
   catalog.paths[0] = kPaths[0];
   catalog.paths[1] = kPaths[1];
   return catalog;
+}
+
+void test_cached_validation_blocks_preview_ram_and_unsaved_stream_fallback() {
+  Ui ui = createUi();
+  SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+  TEST_ASSERT_TRUE(ui.setMidiAssignment(60, 1));
+  for (auto status : {WavValidation::Status::Unchecked, WavValidation::Status::Unsupported,
+                      WavValidation::Status::Invalid, WavValidation::Status::ReadError}) {
+    catalog.validation[1].status = status;
+    router.onPreviewSample(1);
+    router.onAssignedMidiNoteOn(60);  // No prepared entry: unsaved-assignment fallback.
+    ActiveSampleRegistry::Entry entry;
+    entry.path = catalog.paths[1];
+    entry.effectiveMode = ActiveSampleRegistry::EffectiveStorageMode::Ram;
+    setRegistryEntry(runtime, 60, entry);
+    router.onAssignedMidiNoteOn(60);
+    TEST_ASSERT_TRUE(gTriggerStub.events.empty());
+    TEST_ASSERT_EQUAL_INT(-1, ui.model().lastTriggeredSampleIndex);
+    clearRuntimeState(runtime);
+  }
+  catalog.validation[1].status = WavValidation::Status::Valid;
+  router.onAssignedMidiNoteOn(60);
+  TEST_ASSERT_EQUAL_UINT(1, gTriggerStub.events.size());
 }
 
 void test_preview_enqueues_stream_event_with_ui_volume_and_path() {
@@ -425,6 +454,7 @@ bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data) {
 
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_cached_validation_blocks_preview_ram_and_unsaved_stream_fallback);
   RUN_TEST(test_preview_enqueues_stream_event_with_ui_volume_and_path);
   RUN_TEST(test_preview_enqueues_loop_when_ui_mode_is_loop);
   RUN_TEST(test_assigned_note_without_assignment_clears_last_triggered_sample);
