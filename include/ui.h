@@ -56,6 +56,7 @@ class Ui {
     bool assigningPanic = false;
     bool showSavedFeedback = false;
     bool lastSaveSucceeded = true;
+    uint8_t saveErrorCode = 0;
     bool hasUnsavedChanges = false;
     bool midiPulseActive = false;
   };

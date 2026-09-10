@@ -1,4 +1,5 @@
 #include "sampler_save_service.h"
+#include "save_diagnostics.h"
 
 void SamplerSaveService::begin(Ui *ui,
                                const SampleLibrary::Catalog *catalog,
@@ -15,11 +16,13 @@ void SamplerSaveService::begin(Ui *ui,
 }
 
 bool SamplerSaveService::saveConfiguration() const {
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Initialization);
   if (!ui_ || !catalog_ || !runtime_ || !triggerEngine_ || !loaderCommandQueue_ || !uiStatusQueue_) {
     Serial.println("Save: service not initialized");
     return false;
   }
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Playback);
   if (!triggerEngine_->waitForIdle(3000)) {
     // Save should be reliable even if a loop is currently active.
     if (!triggerEngine_->panicAll()) {
@@ -43,6 +46,7 @@ bool SamplerSaveService::saveConfiguration() const {
 }
 
 bool SamplerSaveService::requestLoaderRebuildAndWait() const {
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::LoaderQueue);
   LoaderCommand command;
   command.type = LoaderCommandType::RebuildPreparedSamples;
   if (xQueueSend(loaderCommandQueue_, &command, pdMS_TO_TICKS(200)) != pdTRUE) {
@@ -54,6 +58,7 @@ bool SamplerSaveService::requestLoaderRebuildAndWait() const {
   // cancelled: returning early would resume playback while its RAM is changing
   // and leave a stale completion event for the next save.
   Serial.println("Save: preparing samples");
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Loader);
   while (true) {
     UiStatusEvent event;
     if (xQueueReceive(uiStatusQueue_, &event, pdMS_TO_TICKS(20)) != pdTRUE) {

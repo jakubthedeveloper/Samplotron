@@ -12,9 +12,9 @@ Samplotron is a standalone hardware sampler played with an external MIDI control
 
 ![Samplotron hardware sampler](Samplotron.jpg)
 
-The current photos show an earlier version played only through external MIDI. Photos of the version with the built-in keypad are coming soon.
+## Watch Samplotron in action
 
-[Why I built my own sampler — full article on Medium](https://medium.com/@KubaPisze/i-built-my-own-sampler-to-fit-my-needs-217493f4067c)
+[![Watch Samplotron in action — play the video on YouTube](docs/assets/youtube-preview.png)](https://www.youtube.com/watch?v=keyMwPUFDeM)
 
 For a walkthrough with screen photos, see the [musician's manual](docs/manual.md). Firmware binaries are available in the [latest main release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest).
 
@@ -147,6 +147,8 @@ pio run -e esp-wrover-kit -t upload
 With Make installed, the equivalents are `make build-main` and `make upload-main`. Dependencies and PSRAM settings are declared in [platformio.ini](platformio.ini).
 
 To flash without building, download `firmware.bin`, `bootloader.bin`, `partitions.bin`, and `boot_app0.bin` from the same [main-latest release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest), then follow the [prebuilt firmware instructions](docs/documentation.md#flashing-prebuilt-firmware).
+
+Save failures appear on the OLED as compact codes such as `SAVE E15`. See [save error codes](docs/save-errors.md) for their meanings and diagnosis without a serial monitor.
 
 ### Tests
 

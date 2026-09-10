@@ -1,4 +1,5 @@
 #include "settings_store.h"
+#include "save_diagnostics.h"
 
 #include <Arduino.h>
 #include <SD.h>
@@ -58,17 +59,20 @@ bool writeJsonToPath(const char *path, const JsonDocument &doc) {
   // Serialize before touching SD. Keep the bytes until the closed file has
   // been reopened and checked, so verification also detects valid but wrong JSON.
   const size_t expectedBytes = measureJsonPretty(doc);
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Memory);
   std::unique_ptr<char[]> payload(new (std::nothrow) char[expectedBytes + 1]);
   if (!payload) {
     Serial.printf("Save: cannot allocate %u bytes for JSON\n",
                   static_cast<unsigned>(expectedBytes + 1));
     return false;
   }
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Json);
   if (serializeJsonPretty(doc, payload.get(), expectedBytes + 1) != expectedBytes) {
     Serial.println("Save: JSON serialization length mismatch");
     return false;
   }
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::OpenWrite);
   File file = SD.open(path, FILE_WRITE);  // Truncate any previous temporary file.
   if (!file) {
     Serial.printf("Save: cannot open %s for writing\n", path);
@@ -77,11 +81,13 @@ bool writeJsonToPath(const char *path, const JsonDocument &doc) {
 
   // Limit both stdio buffering and each write to one SD sector. Flushing each
   // block prevents stdio from combining them into a multi-sector transfer.
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::WriteBuffer);
   if (!file.setBufferSize(kSettingsIoBlockBytes)) {
     Serial.println("Save: cannot configure SD write buffer");
     file.close();
     return false;
   }
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Write);
   size_t written = 0;
   while (written < expectedBytes) {
     const size_t remaining = expectedBytes - written;
@@ -100,16 +106,19 @@ bool writeJsonToPath(const char *path, const JsonDocument &doc) {
   }
   file.close();
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::OpenRead);
   file = SD.open(path, FILE_READ);
   if (!file) {
     Serial.printf("Save: cannot reopen %s for verification\n", path);
     return false;
   }
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::ReadBuffer);
   if (!file.setBufferSize(kSettingsIoBlockBytes)) {
     Serial.println("Save: cannot configure SD read buffer");
     file.close();
     return false;
   }
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::FileSize);
   const size_t storedBytes = file.size();
   if (storedBytes != expectedBytes) {
     Serial.printf("Save: stored size mismatch: %u/%u bytes\n",
@@ -123,6 +132,7 @@ bool writeJsonToPath(const char *path, const JsonDocument &doc) {
   while (offset < expectedBytes) {
     const size_t remaining = expectedBytes - offset;
     const size_t requested = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+    SaveDiagnostics::setStage(SaveDiagnostics::Stage::Read);
     const size_t received = file.read(buffer, requested);
     if (received == 0 || received > requested) {
       Serial.printf("Save: verification read failed at %u/%u bytes\n",
@@ -130,6 +140,7 @@ bool writeJsonToPath(const char *path, const JsonDocument &doc) {
       file.close();
       return false;
     }
+    SaveDiagnostics::setStage(SaveDiagnostics::Stage::DataMismatch);
     if (memcmp(buffer, payload.get() + offset, received) != 0) {
       size_t mismatch = 0;
       while (buffer[mismatch] == static_cast<uint8_t>(payload[offset + mismatch])) {
@@ -295,6 +306,7 @@ bool saveToSd(const SamplerSettings &settings) {
     entry["playback_mode"] = assignment.loopPlaybackEnabled ? "loop" : "shot";
   }
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Json);
   if (gSettingsJsonDoc.overflowed()) {
     Serial.println("Save: configuration exceeds JSON capacity");
     return false;
@@ -305,6 +317,7 @@ bool saveToSd(const SamplerSettings &settings) {
     return false;
   }
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Backup);
   if (SD.exists(kSettingsPath)) {
     SD.remove(kSettingsBackupPath);
     if (!SD.rename(kSettingsPath, kSettingsBackupPath)) {
@@ -314,6 +327,7 @@ bool saveToSd(const SamplerSettings &settings) {
     }
   }
 
+  SaveDiagnostics::setStage(SaveDiagnostics::Stage::Rename);
   if (!SD.rename(kSettingsTempPath, kSettingsPath)) {
     Serial.println("Save: cannot replace configuration file");
     if (SD.exists(kSettingsBackupPath)) {
