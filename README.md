@@ -10,8 +10,6 @@ Samplotron is a standalone hardware sampler played with an external MIDI control
 
 **[Explore the interactive build guide →](https://jakubthedeveloper.github.io/Samplotron/)** Follow animated wiring diagrams and firmware screen demonstrations, from connecting your first component to playing samples. Pause, replay and build at your own pace.
 
-![Samplotron hardware sampler](Samplotron.jpg)
-
 ## Watch Samplotron in action
 
 [![Watch Samplotron in action — play the video on YouTube](docs/assets/youtube-preview.png)](https://www.youtube.com/watch?v=keyMwPUFDeM)
