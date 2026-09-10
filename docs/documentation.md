@@ -53,17 +53,31 @@ Source of truth: `include/pins.h`.
 - Nonzero-velocity Note On messages are accepted on all channels. Velocity is not used for volume; Note Off (including zero-velocity Note On), CC, pitch bend, and MIDI clock do not control playback.
 - The learned panic note takes precedence over sample playback for the same note.
 
-### Audio/Power Isolation (Noise Mitigation)
+### Audio Output, Grounding and Power
 
-Current hardware revision includes additional isolation elements to reduce audible noise caused by ground loops between Samplotron and an external mixer:
+The current hardware build takes **one channel of headphones out (mono)** through a volume potentiometer wired as a voltage divider to the mono output jack. Both headphone channels carry the same mono signal in phase. On the headphones TRS connector, tip is L, ring is R, and sleeve is headphone ground. Use either L or R relative to sleeve; leave the other channel unconnected. Do not join L and R or take the signal between them.
 
-- audio output path: **one channel of headphones out (mono)** → `600:600` audio isolation transformer → volume potentiometer → isolated mono output jack,
-- output jack: isolated from chassis,
-- power path: Hi-Link `B0505S-3WR3` DC/DC isolator.
+| Connection | Destination |
+| --- | --- |
+| One headphone channel: tip (L) or ring (R) | One outer potentiometer lug |
+| Potentiometer wiper | Mono output jack tip |
+| Other outer potentiometer lug | Device ground star point |
+| Headphone ground / board GND | Device ground star point |
+| Mono output jack sleeve | Device ground star point |
 
-Use a TRS plug at headphones out: tip is left, ring is right, sleeve is headphone ground. Connect the transformer's primary between **either tip or ring** and sleeve. Leave the other channel unconnected; never short left and right together. The secondary feeds the volume potentiometer and mono jack, and stays electrically isolated from board ground and chassis.
+The potentiometer is a voltage divider, not a two-terminal series resistor. At maximum volume its wiper reaches the signal-side lug; at minimum it reaches the ground-side lug.
 
-Do not use the separate L/R **speaker terminals** for this path. They are outputs of bridge-tied Class-D amplifiers: both terminals are active, neither is ground, and the signal includes switching components at speaker level. A 600:600 audio transformer is not a Class-D output filter or a speaker-to-line converter; this connection can cause excessive level, buzz and distortion. Headphones out takes the signal before the speaker amplifiers. Moving the existing transformer to this connector noticeably improved sound quality on the current device.
+**Grounding and enclosure continuity are essential.** Use a metal enclosure with electrical continuity across all its parts. Bring all device-side ground connections together in one star point, including board/headphone ground, the potentiometer ground lug, output jack sleeve and isolated power return. Bond that point to the enclosure through a dedicated, secure connection with good metal-to-metal contact. Do not use a jack or potentiometer mounting nut as the ground connection. Route a ground wire to the jack sleeve and the potentiometer ground lug rather than relying on mechanical mounting.
+
+For normal operation, the builder recommends a dedicated supply jack instead of USB power. The tested power arrangement for this hardware revision is:
+
+**9 V input jack → step-down converter set to 5 V → B0505S-3WR3 DC/DC isolator → this ESP32 AudioKit board's BAT connector.**
+
+This allows the device to use good-quality guitar-pedal power supplies. Connect the isolated output return to the device ground star point; keep the 9 V input/converter return on the supply side of the isolator so that grounding does not bypass the isolation. Follow the actual board's connector polarity and wiring; the BAT connection above describes this build, not every ESP32 board. The programming USB port remains available for flashing and serial diagnostics.
+
+Do not use the separate L/R **speaker terminals** for audio output. They are bridge-tied Class-D amplifier outputs: both terminals are active, neither is ground, and the signal includes switching components at speaker level. Headphones out takes the signal before those amplifiers and is the source used by the repaired output.
+
+Hardware confirmation (2026-09-10): the user repaired the output and confirmed this wiring, grounding and power arrangement. The previously reported low output level is resolved by the hardware repair; firmware gain was not increased.
 
 The [Ai-Thinker AudioKit V2.2 schematic (mirror)](https://github.com/johnradford49/ESP32-Audio-Kit/blob/main/esp32-audio-kit_v2.2_sch.pdf) shows the separate headphone and speaker paths. ES8388 register definitions are in the [Everest Semiconductor datasheet](https://www.armdesigner.com/download/ES8388_datasheet.pdf), sections 6.1.3–6.1.5 and 6.3.17–6.3.21.
 
@@ -219,7 +233,7 @@ The limiter stores a linked gain bound for each delayed stereo frame. An over-ce
 
 At `VOL=100` a single voice now has unity digital gain instead of about 0.22 (the old effective gain including 1/64 quantization). Removing the old analog +4.5 dB boost gives roughly **8.7 dB higher single-voice output** below limiting, for the same WAV and external settings. This is a calculation, not an analog measurement. Quiet source files remain quiet; their dynamics are preserved. Peaks can briefly reduce other sounds in the same mix, and release means a lone voice immediately after an overload may still be attenuated.
 
-The guarantee is a bounded **digital sample peak**, not an oversampled true-peak limit or a guarantee against transformer/mixer analog overload. [EBU peak guidance](https://qc.ebu.io/items/0084B/) distinguishes reconstructed true peaks from PCM sample peaks. Keep `CHIPPOWER=0x00`, which was confirmed quiet on this board. Verify the new level on hardware with single and overlapping samples, including bass-heavy material through the 600:600 transformer. Start the external volume low. CPU/SD throughput at high polyphony still requires an on-device check. The 32-aligned-sine regression covers the entire waveform, including the first attack and final delayed frames: maximum deviation from a unity-level reference is bounded to 128 PCM units and RMS error to 64 units. It also rejects consecutive rail samples and includes a deliberately hard-clipped negative control. These thresholds validate that specific test waveform, not arbitrary-signal transparency.
+The guarantee is a bounded **digital sample peak**, not an oversampled true-peak limit or a guarantee against analog output or mixer overload. [EBU peak guidance](https://qc.ebu.io/items/0084B/) distinguishes reconstructed true peaks from PCM sample peaks. Keep `CHIPPOWER=0x00`, which was confirmed quiet on this board. Verify the new level on hardware with single and overlapping samples, including bass-heavy material through the headphone/potentiometer output. Start the external volume low. CPU/SD throughput at high polyphony still requires an on-device check. The 32-aligned-sine regression covers the entire waveform, including the first attack and final delayed frames: maximum deviation from a unity-level reference is bounded to 128 PCM units and RMS error to 64 units. It also rejects consecutive rail samples and includes a deliberately hard-clipped negative control. These thresholds validate that specific test waveform, not arbitrary-signal transparency.
 
 ## 7. UI and Device Interaction
 

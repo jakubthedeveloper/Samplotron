@@ -101,7 +101,8 @@ bool init() {
     return false;
   }
 
-  // Playback-only ES8388 profile; output is one headphones-out channel via 600:600.
+  // Playback-only ES8388 profile; one headphones-out channel feeds a pot divider.
+  // Pot wiper -> mono jack tip; ground lug and jack sleeve -> device ground star.
   const uint8_t initSeq[][2] = {
       {kRegDacControl3, kDacControl3Muted},  // Mute, preserving default control bits.
       {0x01, 0x50},             // Chip Control 2: retain analog reference/bias profile.

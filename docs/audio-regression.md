@@ -23,7 +23,7 @@ Before the boundary fix, the start and retrigger tests measured a 12000-unit jum
 
 The existing `test_audio_mixer` suite separately checks unity gain, cancellation, linked limiting, 32 full-scale voices, aligned-sine shape against an independent unity sine, attack/release and sample acceptance. The playback suite's inferred-gain check bounds adjacent gain changes to 0.033 away from zero crossings (32-frame attack plus PCM rounding tolerance). It is a discontinuity check, not a perceptual transparency or distortion measurement.
 
-Host tests cannot establish ESP32 CPU headroom, SD read latency, I2S underruns, transformer saturation or analog distortion. Confirm on the device with the same pair of samples played solo, simultaneously, with offsets, and retriggered, comparing RAM-loaded short samples against SD-streamed long ones. Capture the headphone-derived output if crackles remain and keep note of trigger timing and volume. Continuous loop crossfades and click-free stealing when all 32 slots are occupied remain separate work; the current suite does not certify them.
+Host tests cannot establish ESP32 CPU headroom, SD read latency, I2S underruns or analog distortion. Confirm on the device with the same pair of samples played solo, simultaneously, with offsets, and retriggered, comparing RAM-loaded short samples against SD-streamed long ones. Capture the headphone-derived output if crackles remain and keep note of trigger timing and volume. Continuous loop crossfades and click-free stealing when all 32 slots are occupied remain separate work; the current suite does not certify them.
 
 
 ## I2S transport timing regression
