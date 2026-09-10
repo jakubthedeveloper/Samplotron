@@ -20,7 +20,7 @@ class SamplerSaveService {
   bool saveConfiguration() const;
 
  private:
-  bool requestLoaderRebuildAndWait(uint32_t timeoutMs) const;
+  bool requestLoaderRebuildAndWait() const;
 
   Ui *ui_ = nullptr;
   const SampleLibrary::Catalog *catalog_ = nullptr;
