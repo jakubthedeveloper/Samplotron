@@ -568,19 +568,19 @@ window.SAMPLOTRON_GUIDE = {
     {
       "id": "audio-connect",
       "title": "03 / Connect the audio output",
-      "caption": "With power disconnected, connect one headphones-out channel (mono) through the 600:600 transformer to the isolated output jack and mixer. Start with a low monitoring volume.",
+      "caption": "With power disconnected, wire one headphones-out channel through a volume potentiometer used as a voltage divider to the mono output jack.",
       "left": "esp",
       "right": "audio",
       "wires": [
         {
           "source": "HEADPHONES: L OR R",
-          "target": "600:600 → MONITOR",
+          "target": "VOL POT → MONO OUT",
           "color": "#74e3b4"
         }
       ],
-      "note": "TRS: tip (L) OR ring (R), plus sleeve (ground), to transformer primary; secondary to volume pot and isolated mono jack. Leave the other channel unconnected. Do not use L/R speaker terminals: Class-D bridge outputs add switching noise and excessive level. Speaker amplifiers, line-in and microphones are disabled.",
+      "note": "Pot divider: one outer lug to headphone L (tip) OR R (ring), the other to ground; wiper to output tip, output sleeve to ground. Leave the other headphone channel unconnected. Join all device-side grounds at one star point and bond it securely to an electrically continuous metal enclosure at a dedicated contact, never through a jack or pot mounting nut. Power this build from a 9 V jack → step-down to 5 V → B0505S-3WR3 isolator → AudioKit BAT; keep the supply-side return isolated from device ground. Prefer a good guitar-pedal supply over USB power; USB remains for programming. Do not use Class-D L/R speaker terminals. Speaker amplifiers, line-in and microphones remain disabled.",
       "command": "",
-      "duration": 25,
+      "duration": 45,
       "screenCues": [],
       "direction": {
         "mode": "guided",

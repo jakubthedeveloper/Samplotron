@@ -1,6 +1,6 @@
 # Recording investigation: sample-test.wav, 2026-09-09
 
-User setup: one headphone channel through the existing 600:600 transformer, Allen & Heath ZEDi-10, JACK and Reaper at 0 dB. User reports maximum Samplotron volume and +40 channel gain. Host audio settings were not inspected or changed.
+User setup: one headphone channel through the original output assembly, Allen & Heath ZEDi-10, JACK and Reaper at 0 dB. User reports maximum Samplotron volume and +40 channel gain. Host audio settings were not inspected or changed.
 
 Inputs supplied on the desktop:
 
@@ -16,7 +16,7 @@ Levels were calculated from signed PCM normalized to its full-scale integer rang
 | Recorded overlap, 21–27 s | -21.682 | -36.392 |
 | Recorded idle, 18–21 s | -74.429 | -85.744 |
 
-The near-full-scale source rules out a quietly prepared drum sample. The solo peak difference is about 28.3 dB between source PCM and recorded PCM; it is not a calibrated voltage measurement or a measurement of transformer loss alone. Mixer input gain, routing and converter headroom belong to the complete transfer path. The ZEDi-10 specifies 18 dB USB headroom above nominal, so a nominal analog meter indication is not 0 dBFS. Its line gain range reaches +40 dB. [Manufacturer specifications](https://www.allen-heath.com/content/uploads/2023/06/ZEDi-10-Technical-Datasheet-1.pdf).
+The near-full-scale source rules out a quietly prepared drum sample. The solo peak difference is about 28.3 dB between source PCM and recorded PCM; it is not a calibrated voltage measurement or a measurement of any one component's loss. Mixer input gain, routing and converter headroom belong to the complete transfer path. The ZEDi-10 specifies 18 dB USB headroom above nominal, so a nominal analog meter indication is not 0 dBFS. Its line gain range reaches +40 dB. [Manufacturer specifications](https://www.allen-heath.com/content/uploads/2023/06/ZEDi-10-Technical-Datasheet-1.pdf).
 
 Large one-frame steps concentrate in the overlaps. Examples: 23.145850, 23.198095, 23.294966, 23.444785, 23.494127, 23.540476, 25.388503, 25.438549, 25.486508 and 26.079932 s. These were selected with absolute sample difference >0.023 FS and a 300-frame minimum separation. That threshold is a locator for this recording, not a general-purpose click detector. Many steps are spaced roughly 50 ms apart and occur during sustained overlap, rather than only at note or file boundaries.
 
@@ -41,10 +41,15 @@ Codec startup now reads back both DAC volume registers and all four analog outpu
 
 ## Follow-up measurement
 
-A four-second mono PCM16/44.1 kHz 1 kHz probe with -12 dBFS peak and 10 ms boundary fades was generated at `/tmp/samplotron-audio-check/calibration-1k-minus12dBFS.wav`. Its sustained sine RMS is approximately -15 dBFS. Play it at sample volume 100 to obtain a known digital reference; start the external mixer gain low, then record the settings, PFL indication and recorded level. Compare the one-channel headphone signal before and after the transformer if practical. Input socket/cable topology and actual analog levels remain to be checked.
+A four-second mono PCM16/44.1 kHz 1 kHz probe with -12 dBFS peak and 10 ms boundary fades was generated at `/tmp/samplotron-audio-check/calibration-1k-minus12dBFS.wav`. Its sustained sine RMS is approximately -15 dBFS. Play it at sample volume 100 to obtain a known digital reference; start the external mixer gain low, then record the settings, PFL indication and recorded level. This probe was used for the subsequent calibration comparison.
 
 Firmware build and all 64 native test cases passed.
 
 ## Device confirmation — 2026-09-10
 
-The user flashed the firmware with 128-frame I2S writes and confirmed that the sound interruption disappeared. The reported overlapping-playback issue is therefore resolved in the user’s device test. This is listening feedback, not a measurement of underrun counts or maximum sustainable polyphony. Low output level remains unresolved; no level confirmation was provided.
+The user flashed the firmware with 128-frame I2S writes and confirmed that the sound interruption disappeared. The reported overlapping-playback issue is therefore resolved in the user’s device test. This is listening feedback, not a measurement of underrun counts or maximum sustainable polyphony. The later audio output repair is recorded below.
+
+
+## Hardware repair confirmed — 2026-09-10
+
+The user repaired the audio output. The final build uses one headphone channel through a potentiometer voltage divider, with a common device ground star and a dedicated bond to a continuous metal enclosure. Normal power is 9 V input, step-down to 5 V, B0505S-3WR3 isolation and this AudioKit board's BAT connector. The low-level investigation is closed based on the user's repair confirmation; the measurements above describe the earlier setup. No firmware gain increase was needed. See [current wiring](../documentation.md#audio-output-grounding-and-power).

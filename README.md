@@ -74,9 +74,13 @@ Saving stores assignments, assigned sample volumes, playback modes, and the pani
 
 Pin assignments are defined in [include/pins.h](include/pins.h); keypad note mapping is in [include/keypad_mapping.h](include/keypad_mapping.h). The [technical documentation](docs/documentation.md#2-pinout-and-buses) includes interrupt pins, keypad scanning details, and hardware notes.
 
-The current hardware revision uses a 600:600 audio isolation transformer between **one channel of headphones out (mono)** and a jack isolated from the chassis, plus a Hi-Link `B0505S-3WR3` DC/DC isolator in the power path, to reduce ground-loop noise with an external mixer.
+The audio output uses **one headphones-out channel (mono)** through a potentiometer wired as a voltage divider: one outer lug to the headphone signal, the other outer lug to ground, and the wiper to the output jack tip. Connect the jack sleeve to ground. At the headphone socket, use tip (L) or ring (R) relative to sleeve (ground), leaving the other channel unconnected. Both channels carry the same mono signal; 
 
-Take tip (left) or ring (right), plus sleeve (headphone ground), from the headphones TRS connector. Leave the other channel unconnected; do not short L and R together. The separate L/R speaker terminals are driven by bridge-tied Class-D amplifiers: they carry a switching, speaker-level signal, and neither terminal is ground. They are unsuitable for this transformer-to-mixer path. Using headphones out bypasses these amplifiers; the hardware change noticeably improved sound quality. Firmware keeps the speaker amplifiers, line-in and microphone capture paths disabled. See [audio wiring and codec configuration](docs/documentation.md#audiopower-isolation-noise-mitigation).
+**Good grounding is essential:** use an electrically continuous metal enclosure, bring all device-side grounds to one star point, and bond it securely to the enclosure at a dedicated point. Do not rely on a jack or potentiometer mounting nut for the ground connection.
+
+For normal operation, use the current build's dedicated power path: **9 V jack → step-down to 5 V → B0505S-3WR3 isolator → the AudioKit board's BAT connector**. The builder recommends good-quality guitar-pedal supplies over USB power. USB is still used for firmware programming. See [audio wiring, grounding and power](docs/documentation.md#audio-output-grounding-and-power) for the divider connections and isolated ground routing.
+
+The separate L/R speaker terminals carry a switching, speaker-level signal from bridge-tied Class-D amplifiers; neither terminal is ground. Use headphones out for the mixer connection. Firmware keeps the speaker amplifiers, line-in and microphone capture paths disabled. 
 
 ### Preparing samples and first use
 

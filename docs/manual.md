@@ -2,7 +2,11 @@
 
 This guide focuses on making music with Samplotron: loading sounds, mapping them to MIDI, shaping playback, and saving your setup. For SD card preparation and firmware installation, start with the [README](../README.md#preparing-samples-and-first-use).
 
-Connect the isolated mono output jack to your mixer and start at a low monitoring volume. Inside Samplotron, this jack is fed from **one channel of headphones out through a 600:600 transformer**. Do not use the AudioKit's separate L/R speaker terminals: their Class-D amplifiers produce a switching, speaker-level signal unsuitable for this connection. Line-in and microphones are disabled; load samples from the SD card.
+Connect the mono output jack to your mixer and start at a low monitoring volume. Inside Samplotron, **one headphones-out channel feeds a potentiometer used as a voltage divider**: one outer lug receives the headphone signal, the other connects to ground, and the wiper feeds the output jack tip. The jack sleeve connects to ground. Do not use the AudioKit's separate L/R speaker terminals: their Class-D amplifiers produce a switching, speaker-level signal unsuitable for this connection. Line-in and microphones are disabled; load samples from the SD card.
+
+For a quiet output, all device-side grounds meet at one star point, bonded to a metal enclosure with full electrical continuity through a dedicated, secure contact. A jack or potentiometer mounting nut must not serve as that ground connection.
+
+The current build uses **9 V input → step-down to 5 V → B0505S-3WR3 isolator → the AudioKit board's BAT connector**, allowing good-quality guitar-pedal supplies. Prefer this dedicated power input over USB for normal operation; use the programming USB port for firmware updates. See the [build wiring](documentation.md#audio-output-grounding-and-power) for grounding and connector details.
 
 ## 1. Power On and Wait for Ready
 
