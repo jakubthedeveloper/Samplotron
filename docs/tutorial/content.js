@@ -578,7 +578,7 @@ window.SAMPLOTRON_GUIDE = {
           "color": "#74e3b4"
         }
       ],
-      "note": "Pot divider: one outer lug to headphone L (tip) OR R (ring), the other to ground; wiper to output tip, output sleeve to ground. Leave the other headphone channel unconnected. Join all device-side grounds at one star point and bond it securely to an electrically continuous metal enclosure at a dedicated contact, never through a jack or pot mounting nut. Power this build from a 9 V jack → step-down to 5 V → B0505S-3WR3 isolator → AudioKit BAT; keep the supply-side return isolated from device ground. Prefer a good guitar-pedal supply over USB power; USB remains for programming. Do not use Class-D L/R speaker terminals. Speaker amplifiers, line-in and microphones remain disabled.",
+      "note": "Pot divider: one outer lug to headphone L (tip) OR R (ring), the other to ground; wiper to output tip, output sleeve to ground. Leave the other headphone channel unconnected. The output jack sleeve must connect to both headphone output ground and the ESP32 GND pin. Join all device-side grounds at one star point, electrically isolated from the enclosure, including at jack and pot mounts. Do not connect ground to the enclosure: this can introduce OLED interference into the audio output. Power this build from a 9 V jack → step-down to 5 V → B0505S-3WR3 isolator → AudioKit BAT; keep the supply-side return isolated from device ground. Prefer a good guitar-pedal supply over USB power; USB remains for programming. Do not use Class-D L/R speaker terminals. Speaker amplifiers, line-in and microphones remain disabled.",
       "command": "",
       "duration": 45,
       "screenCues": [],
