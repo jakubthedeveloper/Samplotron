@@ -151,6 +151,33 @@ bool StableAudioOutputI2S::SetRate(int hz) {
   return AudioOutputI2S::SetRate(hz);
 }
 
+#ifdef ESP32
+size_t StableAudioOutputI2S::writeBlock(void *context, const uint8_t *data, size_t bytes) {
+  auto *self = static_cast<StableAudioOutputI2S *>(context);
+  size_t written = 0;
+  // Nonblocking: a full DMA queue must not prevent servicing other voices.
+  // Preserve partial writes even when the API reports a timeout.
+  i2s_channel_write(self->_tx_handle, data, bytes, &written, 0);
+  return written;
+}
+#endif
+
+bool StableAudioOutputI2S::ConsumeSample(int16_t sample[2]) {
+#ifdef ESP32
+  if (!i2sOn) return false;
+  int16_t output[2] = {sample[0], sample[1]};
+  MakeSampleStereo16(output);
+  if (mono) output[0] = output[1] = (int32_t(output[0]) + output[1]) / 2;
+  output[0] = Amplify(output[0]);
+  output[1] = Amplify(output[1]);
+  // Audio continuously feeds silence after EOF, so partial blocks complete
+  // without stopping I2S or dropping queued tails. Adds at most 128 frames.
+  return block_.consume(output, writeBlock, this);
+#else
+  return AudioOutputI2S::ConsumeSample(sample);
+#endif
+}
+
 uint32_t StableAudioOutputI2S::rateSetCalls() const { return rateSetCalls_; }
 
 uint32_t StableAudioOutputI2S::skippedRateSetCalls() const { return skippedRateSetCalls_; }

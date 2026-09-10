@@ -9,6 +9,7 @@
 #include "AudioOutputI2S.h"
 #include "sampler_mixer.h"
 #include "budgeted_audio_output.h"
+#include "pcm_block_buffer.h"
 #include "audio.h"
 #include "stream_manager.h"
 
@@ -18,8 +19,6 @@ constexpr uint8_t kVolumeScaleMax = 100;
 constexpr int kMixerBufferSamples = 512;
 // Limit per-update work so SD streamed voices don't monopolize audio task cycles.
 constexpr uint16_t kVoiceLoopSampleBudget = 96;
-// Short anti-click fade only when retriggering an active group.
-constexpr uint32_t kRetriggerFadeInUs = 800;
 // Retriggered voices from the same group are softly cut to avoid clicks.
 // Keep this short to avoid audible comb/distortion from long overlap of the same sample.
 constexpr uint32_t kRetriggerFadeOutUs = 6000;
@@ -82,11 +81,17 @@ class StableAudioOutputI2S : public AudioOutputI2S {
 
   bool SetRate(int hz) override;
 
+  bool ConsumeSample(int16_t sample[2]) override;
+
   uint32_t rateSetCalls() const;
   uint32_t skippedRateSetCalls() const;
   uint32_t appliedRateSetCalls() const;
 
  private:
+#ifdef ESP32
+  static size_t writeBlock(void *context, const uint8_t *data, size_t bytes);
+  PcmBlockBuffer block_;
+#endif
   int lastRateHz_ = -1;
   uint32_t rateSetCalls_ = 0;
   uint32_t skippedRateSetCalls_ = 0;

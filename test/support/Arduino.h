@@ -88,6 +88,9 @@ class HardwareSerial {
   template <typename... Args>
   void printf(const char *, Args...) {}
 
+  template <typename... Args>
+  void printf_P(const char *, Args...) {}
+
   void println(const char * = "") {}
   void print(const char *) {}
 };
@@ -97,3 +100,8 @@ extern HardwareSerial Serial;
 unsigned long millis();
 void testSetMillis(unsigned long value);
 void testAdvanceMillis(unsigned long delta);
+
+#ifndef PSTR
+#define PSTR(s) (s)
+#endif
+unsigned long micros();
