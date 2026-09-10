@@ -206,7 +206,9 @@ void DisplaySsd1309::renderMain(const Ui::RenderModel &model, const Ui &ui) {
   }
 
   if (model.showSavedFeedback) {
-    gDisplay.drawStr(0, 36, model.lastSaveSucceeded ? "Saved" : "Save ERR");
+    char feedback[12];
+    snprintf(feedback, sizeof(feedback), "SAVE E%02u", static_cast<unsigned>(model.saveErrorCode));
+    gDisplay.drawStr(0, 36, model.lastSaveSucceeded ? "Saved" : feedback);
   }
 
   const char *kItemsLibOnly[1] = {"LIB"};

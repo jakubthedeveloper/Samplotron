@@ -12,9 +12,9 @@ Samplotron is a standalone hardware sampler played with an external MIDI control
 
 ![Samplotron hardware sampler](Samplotron.jpg)
 
-The current photos show an earlier version played only through external MIDI. Photos of the version with the built-in keypad are coming soon.
+## Watch Samplotron in action
 
-[Why I built my own sampler — full article on Medium](https://medium.com/@KubaPisze/i-built-my-own-sampler-to-fit-my-needs-217493f4067c)
+[![Watch Samplotron in action — play the video on YouTube](docs/assets/youtube-preview.png)](https://www.youtube.com/watch?v=keyMwPUFDeM)
 
 For a walkthrough with screen photos, see the [musician's manual](docs/manual.md). Firmware binaries are available in the [latest main release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest).
 
@@ -76,7 +76,7 @@ Pin assignments are defined in [include/pins.h](include/pins.h); keypad note map
 
 The audio output uses **one headphones-out channel (mono)** through a potentiometer wired as a voltage divider: one outer lug to the headphone signal, the other outer lug to ground, and the wiper to the output jack tip. Connect the jack sleeve to ground. At the headphone socket, use tip (L) or ring (R) relative to sleeve (ground), leaving the other channel unconnected. Both channels carry the same mono signal; 
 
-**Good grounding is essential:** use an electrically continuous metal enclosure, bring all device-side grounds to one star point, and bond it securely to the enclosure at a dedicated point. Do not rely on a jack or potentiometer mounting nut for the ground connection.
+**The output jack sleeve must be connected to both headphone output ground and the ESP32 GND pin.** Bring all device-side grounds to one star point, but keep them electrically isolated from the enclosure. Do not connect ground to the enclosure, including through jack or potentiometer mounting hardware: this can introduce OLED interference into the audio output.
 
 For normal operation, use the current build's dedicated power path: **9 V jack → step-down to 5 V → B0505S-3WR3 isolator → the AudioKit board's BAT connector**. The builder recommends good-quality guitar-pedal supplies over USB power. USB is still used for firmware programming. See [audio wiring, grounding and power](docs/documentation.md#audio-output-grounding-and-power) for the divider connections and isolated ground routing.
 
@@ -94,7 +94,24 @@ During boot, every loaded library entry (up to 32, including unassigned samples)
 
 No configuration file is required for first boot; without one, the device starts with no assignments, one-shot playback, and the default RAM budget.
 
-The repository includes a batch conversion command, requiring `ffmpeg` and Make:
+On Linux, install FFmpeg using your distribution's package manager (for example, `sudo apt install ffmpeg` on Debian/Ubuntu). Run this in Bash, setting `samples_dir` to the directory containing your WAV files:
+
+```bash
+samples_dir="/path/to/your samples"
+(
+    cd -- "$samples_dir" || exit 1
+    mkdir -p -- samplotron || exit 1
+    for file in *.[wW][aA][vV]; do
+        [ -f "$file" ] || continue
+        ffmpeg -nostdin -n -i "./$file" -map 0:a:0 -ac 1 -ar 44100 \
+            -c:a pcm_s16le -map_metadata -1 "samplotron/${file%.*}.wav" || exit 1
+    done
+)
+```
+
+This converts WAV files directly in the selected directory to uncompressed PCM16, 44.1 kHz, mono. Originals are preserved; output goes into its `samplotron` subdirectory, ready to copy to `/samples` on the SD card. Existing output files are not overwritten. This command does not trim silence or normalize volume.
+
+The repository also includes a batch conversion command, requiring `ffmpeg` and Make:
 
 ```bash
 make convert-samples SAMPLES_DIR=/path/to/sample-copies
@@ -130,6 +147,8 @@ pio run -e esp-wrover-kit -t upload
 With Make installed, the equivalents are `make build-main` and `make upload-main`. Dependencies and PSRAM settings are declared in [platformio.ini](platformio.ini).
 
 To flash without building, download `firmware.bin`, `bootloader.bin`, `partitions.bin`, and `boot_app0.bin` from the same [main-latest release](https://github.com/jakubthedeveloper/Samplotron/releases/tag/main-latest), then follow the [prebuilt firmware instructions](docs/documentation.md#flashing-prebuilt-firmware).
+
+Save failures appear on the OLED as compact codes such as `SAVE E15`. See [save error codes](docs/save-errors.md) for their meanings and diagnosis without a serial monitor.
 
 ### Tests
 

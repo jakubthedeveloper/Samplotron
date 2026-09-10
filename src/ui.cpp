@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "save_diagnostics.h"
 
 #include <Arduino.h>
 
@@ -144,11 +145,16 @@ void Ui::update() {
     if (!saveExecutionArmed_) {
       saveExecutionArmed_ = true;
     } else {
+      SaveDiagnostics::setStage(SaveDiagnostics::Stage::Callback);
       if (!onSave_) {
         logNotImplemented("save_configuration_callback_missing");
         lastSaveSucceeded_ = false;
       } else {
         lastSaveSucceeded_ = onSave_(saveContext_);
+      }
+      model_.saveErrorCode = static_cast<uint8_t>(SaveDiagnostics::stage());
+      if (!lastSaveSucceeded_) {
+        Serial.printf("Save: E%02u\n", static_cast<unsigned>(model_.saveErrorCode));
       }
       saveRunPending_ = false;
       saveCompletedPending_ = true;
@@ -466,7 +472,7 @@ void Ui::completeSave() {
   if (lastSaveSucceeded_) {
     hasUnsavedChanges_ = false;
   }
-  saveFeedbackUntilMs_ = millis() + kSaveFeedbackMs;
+  saveFeedbackUntilMs_ = millis() + (lastSaveSucceeded_ ? kSaveFeedbackMs : 15000UL);
   markDirty();
 }
 

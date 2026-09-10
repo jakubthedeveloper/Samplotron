@@ -62,12 +62,13 @@ The current hardware build takes **one channel of headphones out (mono)** throug
 | One headphone channel: tip (L) or ring (R) | One outer potentiometer lug |
 | Potentiometer wiper | Mono output jack tip |
 | Other outer potentiometer lug | Device ground star point |
-| Headphone ground / board GND | Device ground star point |
+| Headphone output ground (sleeve) | Device ground star point |
+| ESP32 GND pin | Device ground star point |
 | Mono output jack sleeve | Device ground star point |
 
 The potentiometer is a voltage divider, not a two-terminal series resistor. At maximum volume its wiper reaches the signal-side lug; at minimum it reaches the ground-side lug.
 
-**Grounding and enclosure continuity are essential.** Use a metal enclosure with electrical continuity across all its parts. Bring all device-side ground connections together in one star point, including board/headphone ground, the potentiometer ground lug, output jack sleeve and isolated power return. Bond that point to the enclosure through a dedicated, secure connection with good metal-to-metal contact. Do not use a jack or potentiometer mounting nut as the ground connection. Route a ground wire to the jack sleeve and the potentiometer ground lug rather than relying on mechanical mounting.
+**The output jack sleeve must be connected to both headphone output ground and the ESP32 GND pin.** Bring all device-side ground connections together in one star point, including headphone ground, ESP32 GND, the potentiometer ground lug, output jack sleeve and isolated power return. **Do not connect this ground to the enclosure: doing so can introduce OLED interference into the audio output.** Route ground wires to the jack sleeve and the potentiometer ground lug, and ensure that jack and potentiometer mounting hardware does not electrically connect ground to the enclosure.
 
 For normal operation, the builder recommends a dedicated supply jack instead of USB power. The tested power arrangement for this hardware revision is:
 
