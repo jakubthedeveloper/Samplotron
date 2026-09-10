@@ -1,6 +1,7 @@
 #include <unity.h>
 #include "Arduino.h"
 #include "pins.h"
+#include "../support/arduino_stubs.cpp"
 
 namespace {
 int amplifierState = LOW;
@@ -97,8 +98,19 @@ void test_playback_never_enables_inputs_or_speaker_amplifiers() {
   }
 }
 
+void test_init_rejects_unapplied_output_level() {
+  for (int reg : {0x1A, 0x1B, 0x2E, 0x2F, 0x30, 0x31}) {
+    gCodecWire = TwoWire(1);
+    gCodecWire.registers[reg] = 0x01;
+    gCodecWire.ignoredWriteRegister = reg;
+    TEST_ASSERT_FALSE(CodecES8388::init());
+    TEST_ASSERT_FALSE(CodecES8388::unmute());
+  }
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_init_rejects_unapplied_output_level);
   RUN_TEST(test_playback_never_enables_inputs_or_speaker_amplifiers);
   RUN_TEST(test_startup_preserves_control_bits_while_muted);
   RUN_TEST(test_unmute_preserves_profile_and_can_be_repeated);

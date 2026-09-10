@@ -117,8 +117,18 @@ Hardware verification (2026-09-09): `CHIPPOWER = 0xAA` introduced output noise o
 - `.wav` and `.WAV` are recognized,
 - file list is sorted alphabetically,
 - UI sample limit: `32` (the first 32 matching files encountered are collected, then sorted).
-- Assigned playback requires uncompressed PCM (`audioFormat = 1`), 16-bit, 44100 Hz, mono. Prepare every library sample in this format, including previews.
+- All playback paths require uncompressed PCM (`audioFormat = 1`), 16-bit, 44100 Hz, mono, including previews and stream fallback.
 - Use a FAT32 card. The conversion command in section 9 modifies files in place, including leading-silence trimming and gain adjustment.
+
+### Boot-time WAV validation
+
+Before playback tasks start, `SampleLibrary::loadFromSd()` validates every collected entry, including unassigned files. The boot screen displays `Checking WAV: n/N` and `Rejected`. Invalid entries stay in the library with `!` and a status (`BAD FORMAT`, `BAD WAV`, or `READ ERROR`); the playback router blocks them before enqueueing preview or MIDI triggers. Unchecked entries are also blocked. Valid entries continue to work.
+
+`wav_validation.cpp` checks RIFF/WAVE identification, exact RIFF/file size agreement, chunk boundaries and odd-byte padding, one `fmt ` chunk before one nonempty `data` chunk, supported PCM parameters, byte rate, block alignment, and whole PCM16 frames. Extended `fmt ` chunks must have a consistent extension length. Unknown chunks are skipped, including metadata after PCM; duplicate or truncated chunks are rejected. Files must fit the signed 32-bit playback seek range. Chunk padding follows the [RIFF specification](https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-).
+
+Validation reads headers and seeks past PCM and metadata payloads; it does not scan audio content, detect clicks/clipping, or guarantee that every PCM sector is readable. Each catalog entry caches status, PCM offset, and length in RAM. Assignment classification and saving reuse this cache. RAM preload reads the cached PCM range directly. SD streaming uses `ValidatedWavSource` to supply a canonical 44-byte header from memory and expose only the cached PCM range, avoiding on-disk header parsing at each trigger or loop restart. Opening the file, checking that the cached range still fits, and reading PCM still involve SD access during playback.
+
+Restart after changing files on the SD card. There is no runtime revalidation or hot-swap support; cache validity assumes files remain unchanged for the session. Validation covers the loaded library's existing 32-entry limit, not additional files outside that list.
 
 ## 5. `sampler_config.json` Configuration
 
@@ -163,7 +173,7 @@ Saving writes and parses the temporary JSON file before rotating the previous co
 
 Sample preparation pipeline:
 
-- MIDI-assigned samples are classified as `RAM` or `STREAM`,
+- MIDI-assigned samples are classified from cached boot validation as `RAM` or `STREAM`,
 - `RAM` is used only for WAV files that meet all conditions:
   - PCM format (`audioFormat = 1`),
   - `16-bit`,
@@ -178,10 +188,12 @@ Playback engine behavior:
 
 - fixed `32`-voice playback pool (`Audio::kVoiceCount`),
 - each trigger allocates a free voice slot when available,
-- retriggering the same sample starts a new voice instance and requests short fade-out on already active voices in the same retrigger group,
+- retriggering the same sample starts a new voice instance and requests a 6 ms fade-out on already active voices in the same retrigger group,
+- both RAM and SD playback apply 35-frame (about 0.8 ms) smoothstep ramps at file start and natural EOF. These advance only on accepted samples, preserve the sustain level, and do not add SD reads. On extremely short samples the two ramps overlap and reduce the peak,
 - if all voices are active, the incoming trigger steals the oldest active voice (deterministic `oldest-voice` policy),
 - if incoming MIDI NOTE ON matches configured panic note, all currently active voices are quickly faded out and pending trigger backlog is cleared,
 - works for both SD-streamed and RAM-backed sample playback,
+- ESP32 I2S writes are staged in 128-frame blocks (512 bytes, up to 2.9 ms additional buffering); short writes retain their exact byte suffix and EOF tails complete with continuous idle silence,
 - voice update loop applies bounded per-voice decode budget (`kVoiceLoopSampleBudget`) to keep scheduling predictable,
 - per-voice gain follows `VOL / 100` in floating point. The 32-input `SamplerMixer` sums before limiting; it never narrows an overloaded sum to PCM16 first. A stereo-linked peak limiter uses 64 frames of look-ahead (1.45 ms at 44.1 kHz), linear predictive gain bounds reached within 32 frames and held for the remainder of the look-ahead, and a 50 ms peak-envelope decay constant. It reduces gain only around overloads, including the look-ahead and release intervals.
 - trigger events are sent through a queue from UI/MIDI domain to dedicated audio task (no direct playback calls from UI code path).
@@ -272,10 +284,14 @@ Assignment rules:
 ### `include/audio_internal.h`
 
 - Audio mixer buffer size: `kMixerBufferSamples = 512`
-- Retrigger fade-in (new voice): `kRetriggerFadeInUs = 800`
 - Retrigger fade-out (older voices in same group): `kRetriggerFadeOutUs = 6000`
 - Default control stop fade-out: `kDefaultStopFadeOutUs = 9000`
 - Decode budget per voice update: `kVoiceLoopSampleBudget = 96`
+### `include/budgeted_audio_output.h`
+
+- File boundary ramps: `kEdgeFrames = 35` (about 0.8 ms at 44.1 kHz), including the decoder’s initial pending zero in playback position accounting.
+- Explicit stop fades distribute the Q15 division remainder over their full duration to avoid an extra final step. Queued audio is preserved, so the 6 ms retrigger fade starts at the voice’s next unqueued frame.
+
 ### `include/sampler_mixer.h`
 
 - Mixer inputs: `kMaxInputs = 32`
@@ -363,9 +379,9 @@ The repository workflow runs native tests and builds the main firmware. Pushes t
 
 ### Test scope and diagnostics
 
-`pio test -e native` covers UI navigation, sample/panic learning, keypad mapping, saving state, and playback routing, including RAM-to-stream fallback and loop control. These tests use stubs and do not exercise the real audio engine, SD hardware, or I2C wiring.
+`pio test -e native` covers UI navigation, sample/panic learning, keypad mapping, saving state, and playback routing, including RAM-to-stream fallback and loop control. The `test_audio_playback` suite additionally runs the real WAV decoder, voice engine, source adapters, budgeted fades and mixer against simulated SD/I2S hardware. It compares sample timelines, tests 2/8/32 overlapping voices at high levels, and includes negative controls for missing, repeated, zeroed and spiked PCM. See [coverage and limits](audio-regression.md). Host tests do not measure ESP32 deadlines, actual SD throughput or analog output.
 
-Main firmware serial output is limited to keypad initialization and key presses from `src/input.cpp`. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
+Main firmware serial output includes keypad diagnostics, WAV rejection reasons and codec volume-register verification at boot. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
 
 ## 10. Module Map (Code Orientation)
 

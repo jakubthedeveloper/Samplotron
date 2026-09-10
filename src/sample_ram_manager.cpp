@@ -22,11 +22,6 @@ LoadedEntry gLoadedEntries[SettingsStore::SamplerSettings::kMaxAssignments];
 bool gPoolBudgetLocked = false;
 uint32_t gFixedPoolBudget = 0;
 
-uint32_t readLe32(const uint8_t *buf) {
-  return static_cast<uint32_t>(buf[0]) | (static_cast<uint32_t>(buf[1]) << 8) |
-         (static_cast<uint32_t>(buf[2]) << 16) | (static_cast<uint32_t>(buf[3]) << 24);
-}
-
 void clearLoadedEntries() {
   for (int i = 0; i < SettingsStore::SamplerSettings::kMaxAssignments; i++) {
     gLoadedEntries[i].path = "";
@@ -74,50 +69,6 @@ int findFreeLoadedEntrySlot() {
     if (!gLoadedEntries[i].valid) return i;
   }
   return -1;
-}
-
-bool findWavDataChunk(const String &path, uint32_t &dataOffset, uint32_t &dataSize) {
-  File file = SD.open(path, FILE_READ);
-  if (!file) return false;
-
-  uint8_t riffHeader[12] = {0};
-  if (file.read(riffHeader, sizeof(riffHeader)) != static_cast<int>(sizeof(riffHeader))) {
-    file.close();
-    return false;
-  }
-
-  if (memcmp(riffHeader, "RIFF", 4) != 0 || memcmp(&riffHeader[8], "WAVE", 4) != 0) {
-    file.close();
-    return false;
-  }
-
-  while (file.available()) {
-    uint8_t chunkHeader[8] = {0};
-    if (file.read(chunkHeader, sizeof(chunkHeader)) != static_cast<int>(sizeof(chunkHeader))) {
-      file.close();
-      return false;
-    }
-
-    const uint32_t chunkSize = readLe32(&chunkHeader[4]);
-    const uint32_t chunkDataPos = static_cast<uint32_t>(file.position());
-
-    if (memcmp(chunkHeader, "data", 4) == 0) {
-      dataOffset = chunkDataPos;
-      dataSize = chunkSize;
-      file.close();
-      return true;
-    }
-
-    uint32_t skipTo = chunkDataPos + chunkSize;
-    if ((chunkSize & 1U) != 0) skipTo += 1U;
-    if (!file.seek(skipTo)) {
-      file.close();
-      return false;
-    }
-  }
-
-  file.close();
-  return false;
 }
 
 bool readFileRangeToBuffer(const String &path, uint32_t offset, uint32_t size, uint8_t *dst) {
@@ -202,15 +153,7 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
       continue;
     }
 
-    uint32_t dataOffset = 0;
-    uint32_t dataSize = 0;
-    if (!findWavDataChunk(item.path, dataOffset, dataSize) || dataSize < item.dataBytes) {
-      report.readErrorCount++;
-      report.fallbackToStreamCount++;
-      continue;
-    }
-
-    if (!readFileRangeToBuffer(item.path, dataOffset, item.dataBytes, gPool + used)) {
+    if (!readFileRangeToBuffer(item.path, item.dataOffset, item.dataBytes, gPool + used)) {
       report.readErrorCount++;
       report.fallbackToStreamCount++;
       continue;

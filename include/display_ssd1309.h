@@ -10,6 +10,8 @@ class DisplaySsd1309 {
   struct BootScreenModel {
     int totalSamples = 0;
     int assignedSamples = 0;
+    int checkedSamples = 0;
+    int rejectedSamples = 0;
     int ramUsagePercent = 0;
     bool loading = true;
   };

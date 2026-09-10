@@ -38,7 +38,9 @@ int logicalMainItemForSelection(int selection, bool hasLastSample, bool hasUnsav
 
 }  // namespace
 
-void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleCount) {
+void Ui::begin(const String *sampleNames, const String *samplePaths, int sampleCount,
+               const WavValidation::Result *validation) {
+  validation_ = validation;
   sampleNames_ = sampleNames;
   samplePaths_ = samplePaths;
   sampleCount_ = clampValue(sampleCount, 0, kMaxSamples);
@@ -473,7 +475,7 @@ void Ui::logNotImplemented(const char *functionName) const {
 }
 
 void Ui::triggerPreview(int sampleIndex) {
-  if (sampleIndex < 0 || sampleIndex >= sampleCount_) return;
+  if (!samplePlayable(sampleIndex)) return;
   if (onPreview_) onPreview_(sampleIndex, previewContext_);
   lastTriggeredSampleIndex_ = sampleIndex;
   markDirty();
@@ -510,4 +512,12 @@ int Ui::findAssignedNoteForSample(int sampleIndex) const {
     if (sampleForMidiNote_[note] == sampleIndex) return note;
   }
   return -1;
+}
+
+bool Ui::samplePlayable(int index) const {
+  return index >= 0 && index < sampleCount_ && (!validation_ || validation_[index].playable());
+}
+const char *Ui::sampleValidationLabel(int index) const {
+  if (index < 0 || index >= sampleCount_ || !validation_) return "";
+  return WavValidation::label(validation_[index].status);
 }

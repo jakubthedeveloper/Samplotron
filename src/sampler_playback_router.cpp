@@ -15,7 +15,7 @@ void SamplerPlaybackRouter::begin(Ui *ui,
 
 void SamplerPlaybackRouter::onPreviewSample(int sampleIndex) const {
   if (!ui_ || !catalog_ || !triggerEngine_) return;
-  if (sampleIndex < 0 || sampleIndex >= catalog_->count) return;
+  if (!catalog_->playable(sampleIndex)) return;
 
   TriggerEvent event;
   event.source = TriggerSourceType::StreamPath;
@@ -43,6 +43,7 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
     return;
   }
 
+  if (!catalog_->playable(sampleIndex)) return;
   ui_->reportTriggeredSample(sampleIndex);
   const String &assignedPath = catalog_->paths[sampleIndex];
   const uint8_t assignedVolume = static_cast<uint8_t>(ui_->sampleVolumeForSample(sampleIndex));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "wav_validation.h"
 
 class Ui {
  public:
@@ -65,7 +66,8 @@ class Ui {
                                                  int sampleIndex,
                                                  void *context);
 
-  void begin(const String *sampleNames, const String *samplePaths, int sampleCount);
+  void begin(const String *sampleNames, const String *samplePaths, int sampleCount,
+             const WavValidation::Result *validation = nullptr);
   void setPreviewCallback(OnPreviewSampleCallback callback, void *context);
   void setSaveCallback(OnSaveCallback callback, void *context);
   void setPlaybackModeChangedCallback(OnPlaybackModeChangedCallback callback, void *context);
@@ -77,6 +79,8 @@ class Ui {
   const String &samplePathAt(int sampleIndex) const;
   const String &sampleNameAt(int sampleIndex) const;
   bool hasSamples() const;
+  bool samplePlayable(int sampleIndex) const;
+  const char *sampleValidationLabel(int sampleIndex) const;
   bool setMidiAssignment(int note, int sampleIndex);
   int assignedSampleForMidiNote(int note) const;
   bool setPanicMidiNote(int note);
@@ -113,6 +117,7 @@ class Ui {
   static int wrapIndex(int value, int size);
   int findAssignedNoteForSample(int sampleIndex) const;
 
+  const WavValidation::Result *validation_ = nullptr;
   const String *sampleNames_ = nullptr;
   const String *samplePaths_ = nullptr;
   int sampleCount_ = 0;

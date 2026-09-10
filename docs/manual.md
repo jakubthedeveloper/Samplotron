@@ -6,7 +6,7 @@ Connect the isolated mono output jack to your mixer and start at a low monitorin
 
 ## 1. Power On and Wait for Ready
 
-When you boot the device, you will first see loading status.
+When you boot the device, `Checking WAV: n/N` shows validation progress for the loaded library (up to 32 samples). `Rejected` counts files that cannot play. Validation runs once at startup, before playback starts; valid samples remain available even if other files are rejected. The screenshots below show an earlier screen layout.
 
 ![Boot loading screen](screenshots/boot.jpg)
 
@@ -36,6 +36,9 @@ In `LIB`:
 
 - Right rotate: browse samples.
 - Right click: play preview.
+- Entries marked `!` cannot play: `BAD FORMAT` means unsupported audio settings, `BAD WAV` means invalid file structure, and `READ ERROR` means the file could not be read. Convert or replace the file using PCM16, 44.1 kHz, mono, then restart the device.
+
+Results remain in memory until power-off. Restart after changing SD files; saving assignments does not refresh validation.
 - Left click: go back.
 
 ## 4. Assign a Sample to a MIDI Note

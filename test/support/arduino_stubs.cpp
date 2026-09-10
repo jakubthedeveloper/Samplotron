@@ -17,3 +17,5 @@ void testSetMillis(unsigned long value) {
 void testAdvanceMillis(unsigned long delta) {
   gNowMs += delta;
 }
+
+unsigned long micros() { return gNowMs * 1000UL; }

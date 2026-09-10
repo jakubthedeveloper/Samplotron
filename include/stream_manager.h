@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 class AudioFileSource;
+namespace SampleLibrary { struct Catalog; }
 
 class StreamManager {
  public:
@@ -22,7 +23,7 @@ class StreamManager {
   StreamManager() = default;
   ~StreamManager();
 
-  bool begin(uint8_t streamCount = kMaxStreams);
+  bool begin(uint8_t streamCount = kMaxStreams, const SampleLibrary::Catalog *catalog = nullptr);
   void shutdown();
 
   bool openStream(uint8_t streamId, const char *path);
@@ -38,4 +39,5 @@ class StreamManager {
   BufferedSdSource *streams_[kMaxStreams] = {nullptr};
   uint8_t streamCount_ = 0;
   Diagnostics diagnostics_;
+  const SampleLibrary::Catalog *catalog_ = nullptr;
 };

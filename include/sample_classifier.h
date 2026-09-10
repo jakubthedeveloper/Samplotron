@@ -5,6 +5,8 @@
 
 #include "settings_store.h"
 
+namespace SampleLibrary { struct Catalog; }
+
 namespace SampleClassifier {
 
 constexpr float kFixedPreloadThresholdSeconds = 5.0f;
@@ -28,6 +30,7 @@ struct AssignedSampleClassification {
   uint16_t bitsPerSample = 0;
   uint32_t sampleRate = 0;
   uint32_t dataBytes = 0;
+  uint32_t dataOffset = 0;
   float durationSeconds = 0.0f;
   StorageMode mode = StorageMode::ReadError;
 };
@@ -48,6 +51,7 @@ struct ClassificationReport {
 };
 
 void classifyAssignedSamples(const SettingsStore::SamplerSettings &settings,
+                             const SampleLibrary::Catalog &catalog,
                              ClassificationReport &report);
 const char *storageModeLabel(StorageMode mode);
 

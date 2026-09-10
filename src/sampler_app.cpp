@@ -76,7 +76,9 @@ void SamplerApp::initializeRuntimeDefaults() {
 void SamplerApp::loadStorageAndSettings() {
   const bool sdReady = StorageSD::init();
   if (sdReady) {
-    SampleLibrary::loadFromSd(catalog_);
+    SampleLibrary::loadFromSd(catalog_, [](void *context) {
+      static_cast<SamplerApp *>(context)->renderBootScreen(true);
+    }, this);
     renderBootScreen(true);
     runtime_.loadSettingsFromSd();
   } else {
@@ -88,7 +90,9 @@ void SamplerApp::loadStorageAndSettings() {
 
 void SamplerApp::initializeInteractiveModules() {
   input_.begin();
-  ui_.begin(catalog_.names, catalog_.paths, catalog_.count);
+  runtime_.setCatalog(&catalog_);
+  audio_.setSampleCatalog(&catalog_);
+  ui_.begin(catalog_.names, catalog_.paths, catalog_.count, catalog_.validation);
   midi_.begin(&ui_);
   runtime_.applyAssignmentsToUi(ui_, catalog_);
   ui_.clearUnsavedChanges();
@@ -162,7 +166,7 @@ void SamplerApp::renderBootScreen(bool loading) {
   bootScreenFlow_.render(loading,
                          catalog_.count,
                          runtime_.assignedSamplesCount(),
-                         runtime_.ramUsagePercent());
+                         runtime_.ramUsagePercent(), catalog_.checkedCount, catalog_.rejectedCount);
 }
 
 void SamplerApp::loop() {

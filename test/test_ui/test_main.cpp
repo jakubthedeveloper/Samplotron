@@ -1,4 +1,5 @@
 #include <unity.h>
+#include "../../src/wav_validation.cpp"
 
 #include "Arduino.h"
 #include "input_ui_bridge.h"
@@ -11,6 +12,26 @@
 #include "../../src/ui.cpp"
 
 namespace {
+
+void test_invalid_library_sample_cannot_preview_or_change_last_sample() {
+  String names[2] = {"Good", "Bad"}, paths[2] = {"/samples/good.wav", "/samples/bad.wav"};
+  WavValidation::Result validation[2];
+  validation[0].status = WavValidation::Status::Valid;
+  validation[1].status = WavValidation::Status::Invalid;
+  Ui ui;
+  ui.begin(names, paths, 2, validation);
+  int previews = 0;
+  ui.setPreviewCallback([](int, void *context) { ++*static_cast<int *>(context); }, &previews);
+  ui.handleEvent({Ui::EventType::RightClick, 0}); // Main -> library.
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  TEST_ASSERT_EQUAL_INT(1, previews);
+  ui.handleEvent({Ui::EventType::RightRotate, 1});
+  ui.handleEvent({Ui::EventType::RightClick, 0});
+  TEST_ASSERT_EQUAL_INT(1, previews);
+  TEST_ASSERT_EQUAL_INT(0, ui.model().lastTriggeredSampleIndex);
+  TEST_ASSERT_FALSE(ui.samplePlayable(1));
+  TEST_ASSERT_EQUAL_STRING("BAD WAV", ui.sampleValidationLabel(1));
+}
 
 void test_keypad_notes_follow_measured_physical_order() {
   const uint8_t scanOrder[] = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
@@ -230,6 +251,7 @@ void tearDown() {}
 
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_invalid_library_sample_cannot_preview_or_change_last_sample);
   RUN_TEST(test_keypad_notes_follow_measured_physical_order);
   RUN_TEST(test_keypad_event_is_not_interpreted_as_encoder_event);
   RUN_TEST(test_begin_sets_initial_model);

@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <stdint.h>
 
+namespace SampleLibrary { struct Catalog; }
+
 class Audio {
  public:
   static constexpr uint8_t kVoiceCount = 32;
@@ -24,6 +26,7 @@ class Audio {
   Audio();
   ~Audio();
 
+  void setSampleCatalog(const SampleLibrary::Catalog *catalog) { catalog_ = catalog; }
   bool begin();
   void update();
   void playSamplePath(const String &samplePath,
@@ -47,5 +50,6 @@ class Audio {
   bool waveformSnapshot(WaveformSnapshot &snapshot) const;
 
  private:
+  const SampleLibrary::Catalog *catalog_ = nullptr;
   Impl *impl_ = nullptr;
 };

@@ -55,7 +55,7 @@ The keypad sends notes `36..51` in the measured physical key order and uses the 
 
 At startup, the firmware scans `/samples`, loads saved assignments, and prepares eligible samples in RAM. Preloading is limited to supported files no longer than 5 seconds that fit within the configured RAM budget (1 MiB by default). Other supported files stream from SD; failed preloads fall back to streaming. Missing or unsupported files are marked unavailable when assignments are prepared.
 
-Each trigger starts a voice. Retriggering the same sample fades out its older voices, and if all 32 slots are occupied, the oldest voice is replaced. RAM and SD playback use the same decoder and mixer, with float summation and a look-ahead peak limiter before PCM16 conversion. A single voice at `VOL=100` keeps its original digital level; overlapping voices are attenuated when their sum would exceed full scale. The audio task runs on core 1; the UI and sample loader run on core 0 and communicate with it through queues.
+Each trigger starts a voice. Retriggering the same sample fades out its older voices, and if all 32 slots are occupied, the oldest voice is replaced. RAM and SD playback use the same decoder and mixer, with float summation and a look-ahead peak limiter before PCM16 conversion. Each voice has a short 35-frame (about 0.8 ms) ramp at the file boundaries. Outside these ramps, a single voice at `VOL=100` keeps its original digital level; overlapping voices are attenuated when their sum would exceed full scale. The audio task runs on core 1; the UI and sample loader run on core 0 and communicate with it through queues.
 
 Saving stores assignments, assigned sample volumes, playback modes, and the panic note in `/sampler_config.json`, and refreshes RAM preparation. Save between performances: the save process waits for playback to finish and can stop running loops before rebuilding the sample pool.
 
@@ -85,6 +85,8 @@ Take tip (left) or ring (right), plus sleeve (headphone ground), from the headph
 3. Insert the card, power on, and wait for `Ready`.
 4. Open `LIB`, preview a sample, then hold the right button and send a MIDI note or press a keypad key to assign it.
 5. Trigger the sound, set `VOL` and `SHOT/LOOP`, then select `SAVE` before powering off.
+
+During boot, every loaded library entry (up to 32, including unassigned samples) is checked for the supported WAV format and valid file structure. The display shows progress and the rejected count. Rejected entries remain visible in `LIB` with `!` and a reason; they cannot play. Results are cached in RAM: restart after changing files on the SD card.
 
 No configuration file is required for first boot; without one, the device starts with no assignments, one-shot playback, and the default RAM budget.
 
@@ -133,7 +135,7 @@ Run the native tests without an ESP32 connected:
 pio test -e native
 ```
 
-`make test` runs the same command. The tests in `test/` cover UI navigation, sample and panic assignment, keypad mapping, saving state, and routing playback requests to RAM or SD, including fallback and loop controls. The audio mixer regression tests exercise the production Samplotron mixer with a simulated output: unity solo playback, summation, 32 full-scale voices, linked limiting, look-ahead/release, backpressure, tail draining, idle silence and fade retries. Run it alone with `pio test -e native -f test_audio_mixer`. Shared hardware stubs live in `test/support/`; audio timing, SD throughput, and physical wiring require checks on the device.
+`make test` runs the same command. The tests in `test/` cover UI navigation, sample and panic assignment, keypad mapping, saving state, and routing playback requests to RAM or SD, including fallback and loop controls. The audio mixer regression tests exercise the production Samplotron mixer with a simulated output: unity solo playback, summation, 32 full-scale voices, linked limiting, look-ahead/release, backpressure, tail draining, idle silence and fade retries. Run it alone with `pio test -e native -f test_audio_mixer`. The full playback regression (`pio test -e native -f test_audio_playback`) also runs the production WAV decoder, voice engine, RAM/SD source adapters, fades and mixer; it checks simultaneous/staggered playback, 6 ms retriggers, nonzero endpoints and repeated slot reuse. The `test_i2s_transport` suite separately covers the ESP32 block writer and a continuously advancing simulated output clock. See [audio regression coverage](docs/audio-regression.md). Shared hardware stubs live in `test/support/`; audio timing, SD throughput, and physical wiring require checks on the device.
 
 ### Code structure
 

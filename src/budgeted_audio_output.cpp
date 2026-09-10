@@ -1,4 +1,6 @@
 #include "budgeted_audio_output.h"
+#include <algorithm>
+#include <cmath>
 
 namespace AudioInternal {
 
@@ -6,10 +8,17 @@ BudgetedAudioOutput::BudgetedAudioOutput(AudioOutput *sink) : sink_(sink) {}
 
 void BudgetedAudioOutput::resetBudget(uint16_t sampleCount) { budgetSamples_ = sampleCount; }
 
+void BudgetedAudioOutput::setSampleFrames(uint32_t pcmFrames) {
+  playbackFrames_ = pcmFrames + 1; // Include the decoder's initial pending zero.
+  playbackPosition_ = 0;
+}
+
 void BudgetedAudioOutput::resetFadeEnvelope() {
+  playbackFrames_ = playbackPosition_ = 0;
   fadeEnvelopeQ15_ = 32768;
   fadeStepQ15_ = 0;
   fadeSamplesRemaining_ = 0;
+  fadeDurationSamples_ = fadeRemainderQ15_ = fadeErrorQ15_ = 0;
   fadeActive_ = false;
   fadeComplete_ = false;
 }
@@ -36,10 +45,10 @@ void BudgetedAudioOutput::beginFadeOut(uint32_t fadeOutUs) {
   }
 
   fadeSamplesRemaining_ = static_cast<uint32_t>(fadeSamples);
-  fadeStepQ15_ = (fadeSamplesRemaining_ > 0) ? (fadeEnvelopeQ15_ / fadeSamplesRemaining_) : fadeEnvelopeQ15_;
-  if (fadeStepQ15_ == 0 && fadeEnvelopeQ15_ > 0) {
-    fadeStepQ15_ = 1;
-  }
+  fadeDurationSamples_ = fadeSamplesRemaining_;
+  fadeStepQ15_ = fadeEnvelopeQ15_ / fadeDurationSamples_;
+  fadeRemainderQ15_ = fadeEnvelopeQ15_ % fadeDurationSamples_;
+  fadeErrorQ15_ = 0;
   fadeActive_ = true;
   fadeComplete_ = false;
 }
@@ -76,12 +85,32 @@ bool BudgetedAudioOutput::ConsumeSample(int16_t sample[2]) {
                                        static_cast<int32_t>(envelopeQ15) + 16384) >> 15);
     }
   }
+  if (playbackFrames_ > 0) {
+    const uint32_t remaining = playbackPosition_ < playbackFrames_
+                                   ? playbackFrames_ - 1 - playbackPosition_ : 0;
+    const uint32_t distance = std::min(playbackPosition_, remaining);
+    if (distance < kEdgeFrames) {
+      const float x = static_cast<float>(distance) / kEdgeFrames;
+      // Smoothstep has zero slope at both ends, unlike an abrupt gain switch.
+      const float edge = x * x * (3.0f - 2.0f * x);
+      for (int c = 0; c < 2; ++c) output[c] = static_cast<int16_t>(std::lround(output[c] * edge));
+    }
+  }
   if (!sink_->ConsumeSample(output)) return false;
+  if (playbackPosition_ < playbackFrames_) ++playbackPosition_;
 
   if (fadeActive_) {
     if (fadeSamplesRemaining_ > 0) {
-      if (fadeEnvelopeQ15_ > fadeStepQ15_) {
-        fadeEnvelopeQ15_ -= fadeStepQ15_;
+      // Spread fixed-point division remainder across the ramp instead of
+      // dropping the accumulated residue abruptly on the final sample.
+      uint32_t step = fadeStepQ15_;
+      fadeErrorQ15_ += fadeRemainderQ15_;
+      if (fadeErrorQ15_ >= fadeDurationSamples_) {
+        ++step;
+        fadeErrorQ15_ -= fadeDurationSamples_;
+      }
+      if (fadeEnvelopeQ15_ > step) {
+        fadeEnvelopeQ15_ -= step;
       } else {
         fadeEnvelopeQ15_ = 0;
       }

@@ -1,6 +1,7 @@
 #include "sampler_runtime.h"
 
 void SamplerRuntime::applyDefaultSettings() {
+  catalog_ = nullptr;
   SettingsStore::applyDefaults(settings_);
   classificationReport_ = SampleClassifier::ClassificationReport{};
   ramLoadReport_ = SampleRamManager::LoadReport{};
@@ -141,7 +142,7 @@ const SampleClassifier::AssignedSampleClassification *SamplerRuntime::findClassi
 }
 
 void SamplerRuntime::classifyAssignedSamplesAndLog() {
-  SampleClassifier::classifyAssignedSamples(settings_, classificationReport_);
+  if (catalog_) SampleClassifier::classifyAssignedSamples(settings_, *catalog_, classificationReport_);
 }
 
 void SamplerRuntime::loadClassifiedRamSamplesAndLog() {

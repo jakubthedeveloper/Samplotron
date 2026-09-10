@@ -237,6 +237,8 @@ bool beginVoiceFromPath(EngineState *impl,
   voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain);
   voice.budgetedOut->resetFadeEnvelope();
+  // StreamManager exposes validated mono PCM16 behind a canonical 44-byte header.
+  voice.budgetedOut->setSampleFrames((voice.activeSource->getSize() - 44U) / 2U);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();
@@ -291,6 +293,7 @@ bool beginVoiceFromRam(EngineState *impl,
   voice.fadeOutUs = 0;
   voice.currentGain = (voice.fadeInUs > 0) ? 0.0f : (voice.targetGain);
   voice.budgetedOut->resetFadeEnvelope();
+  voice.budgetedOut->setSampleFrames(dataBytes / (channelCount * (bitsPerSample / 8U)));
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
     voice.activeSource->close();

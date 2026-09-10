@@ -148,6 +148,20 @@ bool init() {
   if (!codecRead(kRegDacControl3, control3) || control3 != kDacControl3Muted) {
     return false;
   }
+  const uint8_t levels[][2] = {
+      {kRegDacVolumeLeft, 0}, {kRegDacVolumeRight, 0},
+      {kRegOut1Left, kAnalogOutputPlaybackCode}, {kRegOut1Right, kAnalogOutputPlaybackCode},
+      {kRegOut2Left, kAnalogOutputPlaybackCode}, {kRegOut2Right, kAnalogOutputPlaybackCode},
+  };
+  for (const auto &level : levels) {
+    uint8_t actual = 0;
+    if (!codecRead(level[0], actual) || actual != level[1]) {
+      Serial.printf("Codec: volume readback failed reg=0x%02X expected=0x%02X actual=0x%02X\n",
+                    level[0], level[1], actual);
+      return false;
+    }
+  }
+  Serial.println("Codec: DAC and analog outputs verified at 0 dB");
   gCodecReady = true;
   return true;
 }
