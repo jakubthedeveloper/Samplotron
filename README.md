@@ -18,7 +18,7 @@ For a walkthrough with screen photos, see the [musician's manual](docs/manual.md
 
 ## Technical Details
 
-Samplotron uses an ESP32 with PSRAM, built with the `esp-wrover-kit` PlatformIO board configuration, and an ES8388 audio codec. It plays mono PCM16 WAV files at 44.1 kHz through a shared 32-voice engine. Short assigned samples can be preloaded into RAM; longer samples stream from SD.
+Samplotron uses an ESP32 with PSRAM, built with the `esp-wrover-kit` PlatformIO board configuration, and an ES8388 audio codec. It plays mono PCM16 WAV files at 44.1 kHz through a shared 32-voice engine. Assigned samples are preloaded into PSRAM when they fit; the rest stream from SD.
 
 ### Controls
 
@@ -51,7 +51,7 @@ The keypad sends notes `36..51` in the measured physical key order and uses the 
 
 ### How playback works
 
-At startup, the firmware scans `/samples`, loads saved assignments, and prepares eligible samples in RAM. Preloading is limited to supported files no longer than 5 seconds that fit within the configured RAM budget (1 MiB by default). Other supported files stream from SD; failed preloads fall back to streaming. Missing or unsupported files are marked unavailable when assignments are prepared.
+At startup, the firmware scans `/samples`, loads saved assignments, and prepares eligible samples in RAM. The RAM pool is sized from free PSRAM at startup (most of a 4 MB module, several tens of seconds of mono audio), and there is no per-sample length limit. If the assigned samples do not all fit, the shortest are preloaded first. Other supported files stream from SD, which can stutter with several long samples at once; failed preloads also fall back to streaming. Serial output reports how many samples were loaded and how long it took. Missing or unsupported files are marked unavailable when assignments are prepared.
 
 Each trigger starts a voice. Retriggering the same sample fades out its older voices, and if all 32 slots are occupied, the oldest voice is replaced. RAM and SD playback use the same decoder and mixer, with float summation and a look-ahead peak limiter before PCM16 conversion. Each voice has a short 35-frame (about 0.8 ms) ramp at the file boundaries. Outside these ramps, a single voice at `VOL=100` keeps its original digital level; overlapping voices are attenuated when their sum would exceed full scale. The audio task runs on core 1; the UI and sample loader run on core 0 and communicate with it through queues.
 
@@ -90,7 +90,7 @@ The separate L/R speaker terminals carry a switching, speaker-level signal from 
 
 During boot, every loaded library entry (up to 32, including unassigned samples) is checked for the supported WAV format and valid file structure. The display shows progress and the rejected count. Rejected entries remain visible in `LIB` with `!` and a reason; they cannot play. Results are cached in RAM: restart after changing files on the SD card.
 
-No configuration file is required for first boot; without one, the device starts with no assignments, one-shot playback, and the default RAM budget.
+No configuration file is required for first boot; without one, the device starts with no assignments and one-shot playback.
 
 On Linux, install FFmpeg using your distribution's package manager (for example, `sudo apt install ffmpeg` on Debian/Ubuntu). Run this in Bash, setting `samples_dir` to the directory containing your WAV files:
 
@@ -121,7 +121,7 @@ Run it on copies of your source recordings: it replaces WAV files in place, conv
 
 Display orientation is configured by `DisplayConfig::ROTATE_180` in [include/display_config.h](include/display_config.h). It defaults to `true` (180° rotation); set it to `false` for the original orientation. Rebuild and upload the firmware after changing it. This applies to all screens in the main firmware and the input diagnostic firmware.
 
-The on-device `SAVE` action writes `/sampler_config.json`. For manual configuration, including the RAM budget and panic note, see the [configuration format](docs/documentation.md#5-sampler_configjson-configuration). Changing the RAM budget requires a reboot.
+The on-device `SAVE` action writes `/sampler_config.json`. For manual configuration, including the panic note, see the [configuration format](docs/documentation.md#5-sampler_configjson-configuration).
 
 The main firmware prints keypad initialization and key-press diagnostics at 115200 baud. Dedicated firmware environments are available for testing encoders and MIDI input:
 

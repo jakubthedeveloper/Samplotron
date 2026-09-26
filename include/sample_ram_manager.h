@@ -30,6 +30,10 @@ struct LoadReport {
   bool fixedBudgetMismatch = false;
 };
 
+// RAM pool size: free PSRAM at the first call minus a reserve, then fixed
+// until release(). Falls back to kDefaultSampleRamBudgetBytes without PSRAM.
+uint32_t budgetBytes();
+
 bool prepare(const SettingsStore::SamplerSettings &settings,
              const SampleClassifier::ClassificationReport &classification,
              LoadReport &report);

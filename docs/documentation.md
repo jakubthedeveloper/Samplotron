@@ -155,7 +155,6 @@ Minimal format:
 {
   "version": "1.0",
   "global_settings": {
-    "sample_ram_budget_bytes": 1048576,
     "panic_note": 24
   },
   "midi_assignments": [
@@ -178,7 +177,8 @@ Notes:
 - `volume = 100`: unity per-voice gain; a single sample keeps its original level (no automatic normalization of quiet WAV files)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
 - maximum assignments in the settings structure: `128`; the UI catalog holds at most `32` samples and assigns each sample to one note
-- without a readable configuration, loading begins from defaults: no assignments, no panic note, a 1 MiB RAM budget, and one-shot playback
+- without a readable configuration, loading begins from defaults: no assignments, no panic note, and one-shot playback
+- `sample_ram_budget_bytes`, written by older firmware, is ignored; the RAM pool is sized automatically (section 6)
 
 The writer also saves `sample_playback_modes`, an array of `sample_path` / `playback_mode` objects. The UI save flow includes library samples set to `loop`, including those without note assignments; omitted unassigned samples use the default `shot` mode. Assigned sample volumes are saved in `midi_assignments`; unassigned preview volumes are not persisted.
 
@@ -194,8 +194,10 @@ Sample preparation pipeline:
   - `16-bit`,
   - `44100 Hz`,
   - `mono`,
-  - duration `<= 5.0 s`,
-  - fit into the RAM budget,
+  - fit into the RAM budget; there is no per-sample duration limit,
+- the budget is the largest free PSRAM block at the first preparation minus a 512 KiB reserve (`SampleRamManager::budgetBytes()`); without PSRAM it falls back to 1 MiB,
+- when the assigned samples do not all fit, they are packed shortest first, so the fewest samples stream from SD,
+- preload reads 32 KiB chunks; Serial reports the loaded count, size and time. At the 4 MHz SD fallback, a full pool takes several seconds to load at boot and on every `SAVE`,
 - if preload fails, the entry falls back to `STREAM`.
 - if assigned sample format is unsupported/missing, playback for that note is blocked (`UNAVAILABLE`) instead of trying to decode anyway.
 
@@ -215,9 +217,7 @@ Playback engine behavior:
 
 Important behavior:
 
-- RAM pool budget is "locked" after the first `prepare()` (`sample_ram_manager.cpp`),
-- changing `sample_ram_budget_bytes` in the same runtime session is recorded in the preparation result as `fixedBudgetMismatch`,
-- a real budget change requires a device reboot.
+- the RAM pool is allocated once at the first `prepare()` and never resized (`sample_ram_manager.cpp`); later saves repack samples into the same pool.
 
 ### Mixing level policy
 
@@ -281,13 +281,9 @@ Assignment rules:
 - Encoder detent: `4` ticks
 - Long press (right encoder): `700 ms`
 
-### `include/sample_classifier.h`
-
-- RAM preload threshold: `kFixedPreloadThresholdSeconds = 5.0f`
-
 ### `include/settings_store.h`
 
-- Default RAM budget: `kDefaultSampleRamBudgetBytes = 1 MB`
+- Fallback RAM budget without PSRAM: `kDefaultSampleRamBudgetBytes = 1 MB`
 
 ### `include/ui.h`
 

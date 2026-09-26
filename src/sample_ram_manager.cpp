@@ -7,7 +7,11 @@
 
 namespace {
 
-constexpr size_t kReadChunkBytes = 1024;
+// Reads larger than the 4 KiB stdio buffer go straight to FATFS as
+// multi-sector transfers, which matters at the 4 MHz fallback SD clock.
+constexpr size_t kReadChunkBytes = 32 * 1024;
+// PSRAM left for everything else (JSON documents, FATFS state, buffers).
+constexpr uint32_t kPsramReserveBytes = 512UL * 1024UL;
 
 struct LoadedEntry {
   String path;
@@ -99,17 +103,25 @@ bool readFileRangeToBuffer(const String &path, uint32_t offset, uint32_t size, u
 
 namespace SampleRamManager {
 
+uint32_t budgetBytes() {
+  if (!gPoolBudgetLocked) {
+    // The pool is allocated once and never resized, so size it from PSRAM
+    // available at the first preparation rather than a fixed setting.
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    gFixedPoolBudget = largest > kPsramReserveBytes
+                           ? static_cast<uint32_t>(largest - kPsramReserveBytes)
+                           : SettingsStore::SamplerSettings::kDefaultSampleRamBudgetBytes;
+    gPoolBudgetLocked = true;
+  }
+  return gFixedPoolBudget;
+}
+
 bool prepare(const SettingsStore::SamplerSettings &settings,
              const SampleClassifier::ClassificationReport &classification,
              LoadReport &report) {
   report = LoadReport{};
   report.budgetBytes = settings.sampleRamBudgetBytes;
-
-  if (!gPoolBudgetLocked) {
-    gPoolBudgetLocked = true;
-    gFixedPoolBudget = settings.sampleRamBudgetBytes;
-  }
-  report.effectiveBudgetBytes = gFixedPoolBudget;
+  report.effectiveBudgetBytes = budgetBytes();
   if (settings.sampleRamBudgetBytes != gFixedPoolBudget) {
     report.fixedBudgetMismatch = true;
   }

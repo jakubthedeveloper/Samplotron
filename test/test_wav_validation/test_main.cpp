@@ -94,6 +94,31 @@ struct Source : AudioFileSource {
   bool seek(int32_t p,int dir) override {if(dir!=SEEK_SET || p<0 || size_t(p)>bytes.size())return false;pos=p;return true;}
   bool close() override{opened=false;return true;}
 };
+void test_classifier_preloads_long_samples_shortest_first_within_budget() {
+  SampleLibrary::Catalog catalog; catalog.count = 3;
+  const uint32_t sizes[3] = {10 * 88200, 20 * 88200, 3 * 88200};  // 10 s, 20 s, 3 s
+  for (int i = 0; i < 3; ++i) {
+    const char name[] = {'/', char('a' + i), '\0'};
+    catalog.paths[i] = String(name);
+    catalog.validation[i].status = WavValidation::Status::Valid;
+    catalog.validation[i].dataOffset = 44; catalog.validation[i].dataBytes = sizes[i];
+  }
+  SettingsStore::SamplerSettings settings; settings.assignmentCount = 3;
+  for (int i = 0; i < 3; ++i) settings.assignments[i].samplePath = catalog.paths[i];
+  SampleClassifier::ClassificationReport report;
+  // Everything fits: no per-sample duration limit.
+  settings.sampleRamBudgetBytes = 33 * 88200;
+  SampleClassifier::classifyAssignedSamples(settings, catalog, report);
+  TEST_ASSERT_EQUAL_INT(3, report.ramSampleCount);
+  TEST_ASSERT_EQUAL_UINT32(33 * 88200, report.sampleRamUsedBytes);
+  // Only 13 s fit: the two shortest go to RAM regardless of assignment order.
+  settings.sampleRamBudgetBytes = 13 * 88200;
+  SampleClassifier::classifyAssignedSamples(settings, catalog, report);
+  TEST_ASSERT_TRUE(report.items[0].mode == SampleClassifier::StorageMode::Ram);
+  TEST_ASSERT_TRUE(report.items[1].mode == SampleClassifier::StorageMode::Stream);
+  TEST_ASSERT_TRUE(report.items[2].mode == SampleClassifier::StorageMode::Ram);
+  TEST_ASSERT_EQUAL_INT(2, report.ramSampleCount); TEST_ASSERT_EQUAL_INT(1, report.streamSampleCount);
+}
 void test_stream_uses_virtual_header_and_cached_data_bounds() {
   auto b=fixture(); insertChunk(b,36,"JUNK",{1,2,3}); insertChunk(b,b.size(),"LIST",{9});
   Reader reader(b); auto info=WavValidation::validate(reader); Source source(b); ValidatedWavSource view;
@@ -119,6 +144,7 @@ int main(){UNITY_BEGIN();
  RUN_TEST(test_unsupported_formats); RUN_TEST(test_invalid_sizes_and_format_fields);
  RUN_TEST(test_missing_duplicate_and_out_of_order_chunks); RUN_TEST(test_read_failure_is_not_playable);
  RUN_TEST(test_catalog_validates_unassigned_and_classifier_uses_only_cache);
+ RUN_TEST(test_classifier_preloads_long_samples_shortest_first_within_budget);
  RUN_TEST(test_stream_uses_virtual_header_and_cached_data_bounds);
  RUN_TEST(test_stream_rejects_unchecked_and_truncated_files);
  return UNITY_END();}

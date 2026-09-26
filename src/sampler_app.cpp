@@ -22,6 +22,8 @@ constexpr uint16_t kUiStatusQueueLength = 16;
 constexpr uint16_t kAudioTaskStackWords = 6144;
 constexpr uint16_t kLoaderTaskStackWords = 6144;
 constexpr uint16_t kUiTaskStackWords = 8192;
+// Preloading several MiB of samples at the 4 MHz SD fallback takes seconds.
+constexpr uint32_t kBootRebuildTimeoutMs = 60000;
 
 const char *startupTitleForResetReason() {
   const esp_reset_reason_t reason = esp_reset_reason();
@@ -42,7 +44,7 @@ void SamplerApp::setup() {
   if (!startTasks()) {
     return;
   }
-  if (!requestLoaderRebuildAndWait(8000)) {
+  if (!requestLoaderRebuildAndWait(kBootRebuildTimeoutMs)) {
     return;
   }
   if (!CodecES8388::unmute()) {
