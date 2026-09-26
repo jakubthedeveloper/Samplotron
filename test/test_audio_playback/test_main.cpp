@@ -6,7 +6,6 @@
 #include "../support/arduino_stubs.cpp"
 #include "AudioGeneratorWAV.cpp"
 #include "../../src/wav_validation.cpp"
-#include "../../src/validated_wav_source.cpp"
 #include "../../src/sample_library.cpp"
 #include "../../src/stream_manager.cpp"
 #include "../../src/sampler_mixer.cpp"

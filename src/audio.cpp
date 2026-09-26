@@ -83,7 +83,7 @@ bool Audio::begin() {
     return false;
   }
 
-  if (!impl_->streamManager.begin(kVoiceCount, catalog_)) {
+  if (!impl_->streamManager.begin(catalog_)) {
     delete impl_->mixer;
     impl_->mixer = nullptr;
     delete impl_->waveformOut;
@@ -121,9 +121,16 @@ bool Audio::begin() {
   return true;
 }
 
+bool Audio::startStreamReader(uint8_t priority, int core) {
+  return impl_ && impl_->streamManager.startReaderTask(priority, core);
+}
+
 void Audio::update() {
   if (!impl_) return;
   const uint32_t nowUs = micros();
+  if (!impl_->streamManager.hasReaderTask()) {
+    impl_->streamManager.serviceAll();
+  }
 
   AudioInternal::refreshStats(impl_);
 
@@ -158,6 +165,22 @@ void Audio::update() {
         stateChanged = true;
         continue;
       }
+    }
+
+    if (voice.stream && !voice.stream->ready()) {
+      if (voice.stream->failed() || voice.stopping) {
+        AudioInternal::stopVoice(voice);
+        stateChanged = true;
+        continue;
+      }
+      // The card fell behind for this voice only. Feed it silence so the
+      // mixer, which advances in lockstep, keeps every other voice playing.
+      impl_->streamManager.noteStarvedUpdate();
+      int16_t silence[2] = {0, 0};
+      for (uint16_t n = 0; n < AudioInternal::kVoiceLoopSampleBudget; n++) {
+        if (!voice.stub->ConsumeSample(silence)) break;
+      }
+      continue;
     }
 
     if (voice.budgetedOut) {
@@ -251,6 +274,7 @@ void Audio::setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled) {
     if (!voice.active) continue;
     if (voice.retriggerGroupId != retriggerGroupId) continue;
     voice.loopEnabled = loopEnabled;
+    if (voice.stream) voice.stream->setLoop(loopEnabled);
   }
 }
 
@@ -309,10 +333,13 @@ Audio::StreamingDiagnostics Audio::streamingDiagnostics() const {
   if (!impl_) return diagnostics;
   if (impl_->out) diagnostics.i2sUnderrunCount = impl_->out->underrunCount();
   const StreamManager::Diagnostics &sd = impl_->streamManager.diagnostics();
-  diagnostics.sdReadCount = sd.sourceReadCount;
-  diagnostics.sdSlowReadCount = sd.sourceSlowReadCount;
-  diagnostics.sdMaxReadUs = sd.sourceMaxReadUs;
-  diagnostics.sdMaxReadBytes = sd.sourceMaxReadBytes;
+  diagnostics.starvedUpdateCount = sd.starvedUpdateCount;
+  diagnostics.sdReadCount = sd.readCount;
+  diagnostics.sdBytesRead = sd.bytesRead;
+  diagnostics.sdMaxReadUs = sd.maxReadUs;
+  diagnostics.sdMaxReadBytes = sd.maxReadBytes;
+  diagnostics.sdOpenFailureCount = sd.openFailureCount;
+  diagnostics.sdNoFreeStreamCount = sd.noFreeStreamCount;
   return diagnostics;
 }
 

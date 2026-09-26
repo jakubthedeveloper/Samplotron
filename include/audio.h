@@ -20,10 +20,15 @@ class Audio {
   // poll from another task; values may be a few updates stale.
   struct StreamingDiagnostics {
     uint32_t i2sUnderrunCount = 0;
+    // Voice updates that got silence because the SD reader fell behind.
+    uint32_t starvedUpdateCount = 0;
     uint32_t sdReadCount = 0;
-    uint32_t sdSlowReadCount = 0;
+    uint32_t sdBytesRead = 0;
     uint32_t sdMaxReadUs = 0;
     uint32_t sdMaxReadBytes = 0;
+    uint32_t sdOpenFailureCount = 0;
+    // SD triggers dropped because every stream buffer was in use.
+    uint32_t sdNoFreeStreamCount = 0;
   };
 
   struct WaveformSnapshot {
@@ -38,6 +43,8 @@ class Audio {
 
   void setSampleCatalog(const SampleLibrary::Catalog *catalog) { catalog_ = catalog; }
   bool begin();
+  // Moves SD streaming reads to their own task. Until then, update() reads.
+  bool startStreamReader(uint8_t priority, int core);
   void update();
   void playSamplePath(const String &samplePath,
                       uint8_t volume = 100,

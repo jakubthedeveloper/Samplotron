@@ -16,9 +16,9 @@ namespace {
 // synchronized 4 KiB refills outlast the I2S DMA buffer. Fall back to slower
 // clocks if the wiring cannot mount the card at full speed.
 constexpr uint32_t kSpiFrequenciesHz[] = {20000000, 10000000, 4000000};
-// Each streamed voice keeps a file open; retriggers briefly need two. The
-// library default of 5 leaves room for only a few simultaneous SD voices.
-constexpr uint8_t kMaxOpenFiles = 16;
+// Every SD stream (StreamManager::kMaxStreams = 16) keeps its file open;
+// leave room for settings and preload files. The library default is 5.
+constexpr uint8_t kMaxOpenFiles = 20;
 // Mounting reads only a few sectors, so wiring that is marginal at a given
 // clock can still mount and then fail directory and WAV reads. Read a larger
 // range twice before trusting a clock.

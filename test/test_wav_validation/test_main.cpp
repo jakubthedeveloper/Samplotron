@@ -3,9 +3,9 @@
 #include <cstring>
 #include "../support/arduino_stubs.cpp"
 #include "../../src/wav_validation.cpp"
-#include "../../src/validated_wav_source.cpp"
 #include "../../src/sample_library.cpp"
 #include "../../src/sample_classifier.cpp"
+#include "../../src/stream_manager.cpp"
 using Bytes = std::vector<uint8_t>;
 using Status = WavValidation::Status;
 void set32(Bytes &b, size_t p, uint32_t v) { for (int i=0;i<4;++i) b[p+i]=v>>(8*i); }
@@ -119,24 +119,53 @@ void test_classifier_preloads_long_samples_shortest_first_within_budget() {
   TEST_ASSERT_TRUE(report.items[2].mode == SampleClassifier::StorageMode::Ram);
   TEST_ASSERT_EQUAL_INT(2, report.ramSampleCount); TEST_ASSERT_EQUAL_INT(1, report.streamSampleCount);
 }
+SampleLibrary::Catalog catalogWith(const Bytes &file) {
+  FakeSD::files.clear(); FakeSD::files["/samples/x.wav"]=file;
+  SampleLibrary::Catalog catalog; SampleLibrary::loadFromSd(catalog); return catalog;
+}
 void test_stream_uses_virtual_header_and_cached_data_bounds() {
   auto b=fixture(); insertChunk(b,36,"JUNK",{1,2,3}); insertChunk(b,b.size(),"LIST",{9});
-  Reader reader(b); auto info=WavValidation::validate(reader); Source source(b); ValidatedWavSource view;
-  TEST_ASSERT_TRUE(view.attach(&source,info)); uint8_t out[100]={};
-  TEST_ASSERT_EQUAL_UINT32(44,view.read(out,44)); TEST_ASSERT_EQUAL_INT(0,source.reads);
+  auto catalog=catalogWith(b); const auto &info=catalog.validation[0];
+  StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
+  auto *stream=streams.openStream("/samples/x.wav",false); TEST_ASSERT_NOT_NULL(stream);
+  uint8_t out[100]={}; const int reads=FakeSD::reads;
+  // The header comes from memory; PCM is not ready until the reader runs.
+  TEST_ASSERT_EQUAL_UINT32(44,stream->read(out,44)); TEST_ASSERT_EQUAL_INT(reads,FakeSD::reads);
   auto canonical=fixture(); TEST_ASSERT_EQUAL_MEMORY(canonical.data(),out,44);
-  TEST_ASSERT_EQUAL_UINT32(8,view.read(out,100)); TEST_ASSERT_EQUAL_MEMORY(b.data()+info.dataOffset,out,8);
-  TEST_ASSERT_EQUAL_UINT32(0,view.read(out,1)); TEST_ASSERT_TRUE(view.seek(-2,SEEK_END));
-  TEST_ASSERT_EQUAL_UINT32(2,view.read(out,8)); TEST_ASSERT_FALSE(view.seek(1,SEEK_END));
-  TEST_ASSERT_FALSE(view.seek(-1,SEEK_SET)); TEST_ASSERT_TRUE(view.seek(40,SEEK_SET));
-  TEST_ASSERT_EQUAL_UINT32(12,view.read(out,100)); TEST_ASSERT_EQUAL_MEMORY(canonical.data()+40,out,12);
-  TEST_ASSERT_TRUE(view.close()); TEST_ASSERT_FALSE(source.isOpen());
+  TEST_ASSERT_FALSE(stream->ready()); TEST_ASSERT_EQUAL_UINT32(0,stream->read(out,100));
+  streams.serviceAll(); TEST_ASSERT_TRUE(stream->ready());
+  TEST_ASSERT_EQUAL_UINT32(8,stream->read(out,100)); TEST_ASSERT_EQUAL_MEMORY(b.data()+info.dataOffset,out,8);
+  TEST_ASSERT_EQUAL_UINT32(0,stream->read(out,1)); TEST_ASSERT_TRUE(stream->ready());
+  // PCM is sequential: only the header can be revisited, and only before PCM.
+  TEST_ASSERT_FALSE(stream->seek(40,SEEK_SET)); TEST_ASSERT_TRUE(stream->seek(0,SEEK_END));
+  stream->release(); streams.serviceAll();
+  TEST_ASSERT_EQUAL_UINT32(0,streams.diagnostics().openFailureCount);
+}
+void test_looping_stream_buffers_next_iteration() {
+  auto catalog=catalogWith(fixture()); StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
+  auto *stream=streams.openStream("/samples/x.wav",true); streams.serviceAll();
+  uint8_t first[52]={}, second[52]={};
+  TEST_ASSERT_EQUAL_UINT32(52,stream->read(first,100)); TEST_ASSERT_EQUAL_UINT32(0,stream->read(first+52,1));
+  // The next iteration is already buffered: no SD access is needed to restart.
+  const int reads=FakeSD::reads; stream->rewind(); TEST_ASSERT_TRUE(stream->ready());
+  TEST_ASSERT_EQUAL_UINT32(52,stream->read(second,100)); TEST_ASSERT_EQUAL_INT(reads,FakeSD::reads);
+  TEST_ASSERT_EQUAL_MEMORY(first,second,52);
 }
 void test_stream_rejects_unchecked_and_truncated_files() {
-  Source source(fixture()); ValidatedWavSource view; WavValidation::Result info;
-  TEST_ASSERT_FALSE(view.attach(&source,info));
-  Reader reader(fixture()); info=WavValidation::validate(reader); source.bytes.pop_back();
-  TEST_ASSERT_FALSE(view.attach(&source,info)); TEST_ASSERT_FALSE(view.isOpen());
+  auto catalog=catalogWith(fixture()); StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
+  TEST_ASSERT_NULL(streams.openStream("/samples/missing.wav",false));
+  catalog.validation[0].status=Status::Unchecked;
+  TEST_ASSERT_NULL(streams.openStream("/samples/x.wav",false));
+  catalog.validation[0].status=Status::Valid; FakeSD::files["/samples/x.wav"].pop_back();
+  auto *stream=streams.openStream("/samples/x.wav",false); streams.serviceAll();
+  TEST_ASSERT_TRUE(stream->failed()); TEST_ASSERT_FALSE(stream->ready());
+  TEST_ASSERT_EQUAL_UINT32(1,streams.diagnostics().openFailureCount);
+}
+void test_all_streams_in_use_rejects_trigger() {
+  auto catalog=catalogWith(fixture()); StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
+  for (int i=0;i<StreamManager::kMaxStreams;++i) TEST_ASSERT_NOT_NULL(streams.openStream("/samples/x.wav",false));
+  TEST_ASSERT_NULL(streams.openStream("/samples/x.wav",false));
+  TEST_ASSERT_EQUAL_UINT32(1,streams.diagnostics().noFreeStreamCount);
 }
 void setUp(){} void tearDown(){}
 int main(){UNITY_BEGIN();
@@ -146,5 +175,7 @@ int main(){UNITY_BEGIN();
  RUN_TEST(test_catalog_validates_unassigned_and_classifier_uses_only_cache);
  RUN_TEST(test_classifier_preloads_long_samples_shortest_first_within_budget);
  RUN_TEST(test_stream_uses_virtual_header_and_cached_data_bounds);
+ RUN_TEST(test_looping_stream_buffers_next_iteration);
  RUN_TEST(test_stream_rejects_unchecked_and_truncated_files);
+ RUN_TEST(test_all_streams_in_use_rejects_trigger);
  return UNITY_END();}

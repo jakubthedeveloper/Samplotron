@@ -130,6 +130,7 @@ struct VoiceState {
   FreshStartAudioGeneratorWAV *wav = nullptr;
   AudioFileSourceRamWav *ramSource = nullptr;
   AudioFileSource *activeSource = nullptr;
+  StreamManager::SdStream *stream = nullptr;  // Set for StreamPath voices.
   SamplerMixerInput *stub = nullptr;
   BudgetedAudioOutput *budgetedOut = nullptr;
   float targetGain = 0.0f;  // Per-voice gain from sample volume (0..1), before playback fades.

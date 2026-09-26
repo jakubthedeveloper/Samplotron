@@ -57,5 +57,5 @@ class SamplerApp {
   TaskHandle_t loaderTaskHandle_ = nullptr;
   TaskHandle_t uiTaskHandle_ = nullptr;
   Audio::StreamingDiagnostics loggedDiagnostics_;
-  uint32_t lastSdReadCount_ = 0;
+  uint32_t lastSdBytesRead_ = 0;
 };
