@@ -55,6 +55,10 @@ void stopVoice(VoiceState &voice) {
     voice.activeSource->close();
     voice.activeSource = nullptr;
   }
+  if (voice.stream) {
+    voice.stream->release();
+    voice.stream = nullptr;
+  }
   voice.active = false;
   voice.startOrder = 0;
   voice.startUs = 0;
@@ -102,6 +106,7 @@ void requestVoiceStop(VoiceState &voice, uint32_t fadeOutUs) {
   }
   // Keep stop deterministic: no loop restart while voice is tailing out.
   voice.loopEnabled = false;
+  if (voice.stream) voice.stream->setLoop(false);
 }
 
 void refreshStats(EngineState *impl) {
@@ -211,25 +216,22 @@ int allocateVoiceSlot(EngineState *impl, int16_t retriggerGroupId, bool &voiceWa
   return stolenIndex;
 }
 
-bool beginVoiceFromPath(EngineState *impl,
-                        int voiceIndex,
-                        const String &samplePath,
-                        uint8_t volume,
-                        int16_t retriggerGroupId,
-                        bool loopEnabled,
-                        uint32_t fadeInUs) {
-  if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
+namespace {
 
+// Starts a voice on a claimed stream. The stream need not have data yet: the
+// decoder reads only the in-memory header here, and Audio::update() feeds
+// silence until PCM is buffered.
+bool beginVoiceFromStream(EngineState *impl,
+                          int voiceIndex,
+                          StreamManager::SdStream *stream,
+                          const String &samplePath,
+                          uint8_t volume,
+                          int16_t retriggerGroupId,
+                          bool loopEnabled,
+                          uint32_t fadeInUs) {
   VoiceState &voice = impl->voices[voiceIndex];
-  if (!voice.wav || !voice.stub || !voice.budgetedOut) return false;
-  if (!impl->streamManager.openStream(static_cast<uint8_t>(voiceIndex), samplePath.c_str())) {
-    return false;
-  }
-
-  voice.activeSource = impl->streamManager.sourceForStream(static_cast<uint8_t>(voiceIndex));
-  if (!voice.activeSource) {
-    return false;
-  }
+  voice.stream = stream;
+  voice.activeSource = stream;
   voice.targetGain = gainFromVolume(volume);
   voice.fadeInUs = fadeInUs;
   voice.stopping = false;
@@ -241,8 +243,9 @@ bool beginVoiceFromPath(EngineState *impl,
   voice.budgetedOut->setSampleFrames((voice.activeSource->getSize() - 44U) / 2U);
   voice.stub->SetGain(voice.currentGain);
   if (!voice.wav->begin(voice.activeSource, voice.budgetedOut)) {
-    voice.activeSource->close();
     voice.activeSource = nullptr;
+    voice.stream = nullptr;
+    stream->release();
     voice.stub->stop();
     return false;
   }
@@ -264,6 +267,28 @@ bool beginVoiceFromPath(EngineState *impl,
   voice.bitsPerSample = 0;
   voice.retriggerGroupId = retriggerGroupId;
   return true;
+}
+
+}  // namespace
+
+bool beginVoiceFromPath(EngineState *impl,
+                        int voiceIndex,
+                        const String &samplePath,
+                        const uint8_t *head,
+                        uint32_t headBytes,
+                        uint8_t volume,
+                        int16_t retriggerGroupId,
+                        bool loopEnabled,
+                        uint32_t fadeInUs) {
+  if (!impl || voiceIndex < 0 || voiceIndex >= Audio::kVoiceCount) return false;
+
+  VoiceState &voice = impl->voices[voiceIndex];
+  if (!voice.wav || !voice.stub || !voice.budgetedOut) return false;
+  StreamManager::SdStream *stream =
+      impl->streamManager.openStream(samplePath.c_str(), loopEnabled, head, headBytes);
+  if (!stream) return false;
+  return beginVoiceFromStream(
+      impl, voiceIndex, stream, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs);
 }
 
 bool beginVoiceFromRam(EngineState *impl,
@@ -337,11 +362,17 @@ bool restartVoiceLoop(EngineState *impl, int voiceIndex) {
   const uint16_t channelCount = voice.channelCount;
   const uint32_t sampleRate = voice.sampleRate;
   const uint16_t bitsPerSample = voice.bitsPerSample;
+  // Keep the stream across the restart: the reader has already buffered the
+  // next iteration, so the loop continues without waiting for the card.
+  StreamManager::SdStream *stream = voice.stream;
+  impl->voices[voiceIndex].stream = nullptr;
 
   stopVoice(impl->voices[voiceIndex]);
 
-  if (sourceType == VoiceSourceType::StreamPath && path.length() > 0) {
-    return beginVoiceFromPath(impl, voiceIndex, path, volume, retriggerGroupId, loopEnabled, 0);
+  if (sourceType == VoiceSourceType::StreamPath && stream) {
+    stream->rewind();
+    return beginVoiceFromStream(
+        impl, voiceIndex, stream, path, volume, retriggerGroupId, loopEnabled, 0);
   }
   if (sourceType == VoiceSourceType::RamData && ramData && ramDataBytes > 0) {
     return beginVoiceFromRam(impl,

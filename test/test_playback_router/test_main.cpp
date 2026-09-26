@@ -40,6 +40,7 @@ struct RuntimeStubState {
 TriggerStubState gTriggerStub;
 std::unordered_map<const SamplerRuntime *, RuntimeStubState> gRuntimeState;
 std::unordered_map<std::string, SampleRamManager::LoadedSampleData> gRamByPath;
+std::unordered_map<std::string, SampleRamManager::LoadedSampleData> gHeadByPath;
 
 constexpr int kSampleCount = 2;
 const String kNames[kSampleCount] = {"Kick", "Snare"};
@@ -85,6 +86,14 @@ void setLoadedRamSample(const String &path, const uint8_t *data, uint32_t bytes)
 
 void clearLoadedRamSamples() {
   gRamByPath.clear();
+  gHeadByPath.clear();
+}
+
+void setLoadedHead(const String &path, const uint8_t *data, uint32_t bytes) {
+  SampleRamManager::LoadedSampleData head;
+  head.data = data;
+  head.dataBytes = bytes;
+  gHeadByPath[path.c_str()] = head;
 }
 
 Ui createUi() {
@@ -270,6 +279,39 @@ void test_assigned_note_ram_mode_enqueues_ram_event() {
   clearRuntimeState(runtime);
 }
 
+void test_assigned_stream_note_passes_preloaded_head() {
+  Ui ui = createUi();
+  const SampleLibrary::Catalog catalog = createCatalog();
+  SamplerRuntime runtime;
+  TriggerEngine trigger;
+  SamplerPlaybackRouter router;
+  router.begin(&ui, &catalog, &runtime, &trigger);
+
+  static const uint8_t kHead[4] = {1, 2, 3, 4};
+  TEST_ASSERT_TRUE(ui.setMidiAssignment(60, 0));
+  TEST_ASSERT_TRUE(ui.setMidiAssignment(61, 1));
+  for (int note : {60, 61}) {
+    ActiveSampleRegistry::Entry entry;
+    entry.note = note;
+    entry.path = kPaths[note - 60];
+    entry.effectiveMode = ActiveSampleRegistry::EffectiveStorageMode::Stream;
+    setRegistryEntry(runtime, note, entry);
+  }
+  setLoadedHead("/samples/kick.wav", kHead, sizeof(kHead));
+
+  router.onAssignedMidiNoteOn(60);
+  router.onAssignedMidiNoteOn(61);  // No head loaded: streams from the first byte.
+
+  TEST_ASSERT_EQUAL_UINT32(2, gTriggerStub.events.size());
+  TEST_ASSERT_EQUAL(TriggerSourceType::StreamPath, gTriggerStub.events[0].source);
+  TEST_ASSERT_EQUAL_PTR(kHead, gTriggerStub.events[0].streamHead);
+  TEST_ASSERT_EQUAL_UINT32(sizeof(kHead), gTriggerStub.events[0].streamHeadBytes);
+  TEST_ASSERT_NULL(gTriggerStub.events[1].streamHead);
+  TEST_ASSERT_EQUAL_UINT32(0, gTriggerStub.events[1].streamHeadBytes);
+
+  clearRuntimeState(runtime);
+}
+
 void test_assigned_note_ram_enqueue_failure_falls_back_to_stream() {
   Ui ui = createUi();
   const SampleLibrary::Catalog catalog = createCatalog();
@@ -447,6 +489,16 @@ bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data) {
   return true;
 }
 
+bool getLoadedHeadByPath(const String &path, LoadedSampleData &data) {
+  const auto it = gHeadByPath.find(path.c_str());
+  if (it == gHeadByPath.end()) {
+    data = LoadedSampleData{};
+    return false;
+  }
+  data = it->second;
+  return true;
+}
+
 }  // namespace SampleRamManager
 
 #include "../../src/ui.cpp"
@@ -462,6 +514,7 @@ int main() {
   RUN_TEST(test_assigned_note_unavailable_does_not_enqueue);
   RUN_TEST(test_assigned_note_ram_mode_enqueues_ram_event);
   RUN_TEST(test_assigned_note_ram_enqueue_failure_falls_back_to_stream);
+  RUN_TEST(test_assigned_stream_note_passes_preloaded_head);
   RUN_TEST(test_playback_mode_change_to_oneshot_stops_looping_voices);
   RUN_TEST(test_playback_mode_change_to_loop_does_not_stop_voices);
   return UNITY_END();

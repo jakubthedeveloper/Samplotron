@@ -9,7 +9,9 @@ namespace SampleLibrary { struct Catalog; }
 
 namespace SampleClassifier {
 
-constexpr float kFixedPreloadThresholdSeconds = 5.0f;
+// Start of each streamed sample kept in RAM (~185 ms), so playback begins
+// at once while the SD reader opens the file and catches up.
+constexpr uint32_t kStreamHeadBytes = 16 * 1024;
 constexpr uint32_t kRequiredSampleRate = 44100;
 constexpr uint16_t kRequiredChannelCount = 1;
 constexpr uint16_t kRequiredBitsPerSample = 16;
@@ -33,6 +35,7 @@ struct AssignedSampleClassification {
   uint32_t dataOffset = 0;
   float durationSeconds = 0.0f;
   StorageMode mode = StorageMode::ReadError;
+  uint32_t headBytes = 0;  // Stream only: bytes preloaded from the start.
 };
 
 struct ClassificationReport {

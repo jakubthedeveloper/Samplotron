@@ -141,7 +141,7 @@ Before playback tasks start, `SampleLibrary::loadFromSd()` validates every colle
 
 `wav_validation.cpp` checks RIFF/WAVE identification, exact RIFF/file size agreement, chunk boundaries and odd-byte padding, one `fmt ` chunk before one nonempty `data` chunk, supported PCM parameters, byte rate, block alignment, and whole PCM16 frames. Extended `fmt ` chunks must have a consistent extension length. Unknown chunks are skipped, including metadata after PCM; duplicate or truncated chunks are rejected. Files must fit the signed 32-bit playback seek range. Chunk padding follows the [RIFF specification](https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-).
 
-Validation reads headers and seeks past PCM and metadata payloads; it does not scan audio content, detect clicks/clipping, or guarantee that every PCM sector is readable. Each catalog entry caches status, PCM offset, and length in RAM. Assignment classification and saving reuse this cache. RAM preload reads the cached PCM range directly. SD streaming uses `ValidatedWavSource` to supply a canonical 44-byte header from memory and expose only the cached PCM range, avoiding on-disk header parsing at each trigger or loop restart. Opening the file, checking that the cached range still fits, and reading PCM still involve SD access during playback.
+Validation reads headers and seeks past PCM and metadata payloads; it does not scan audio content, detect clicks/clipping, or guarantee that every PCM sector is readable. Each catalog entry caches status, PCM offset, and length in RAM. Assignment classification and saving reuse this cache. RAM preload reads the cached PCM range directly. SD streaming (`StreamManager`) supplies a canonical 44-byte header from memory and exposes only the cached PCM range, avoiding on-disk header parsing at each trigger or loop restart. An `sd_reader` task on core 0 opens files, checks that the cached range still fits, and fills a 16 KiB ring buffer (about 185 ms) per stream in PSRAM, serving the emptiest stream first; the audio task on core 1 only copies buffered PCM. Up to 16 SD streams can play at once; a further SD trigger is dropped. The first 16 KiB (about 185 ms) of every assigned sample that streams is preloaded into the RAM pool, so it starts immediately while the reader opens the file and reads on from there; loops replay that start from RAM. Samples without a preloaded start (library previews, unsaved assignments) begin with silence until their first 2 KiB arrives (roughly 10–30 ms at 4 MHz). If a stream runs dry, only that voice receives silence for the affected update; other voices keep playing. Looped SD samples keep their file open and the reader continues into the next iteration, so restarts need no SD access.
 
 Restart after changing files on the SD card. There is no runtime revalidation or hot-swap support; cache validity assumes files remain unchanged for the session. Validation covers the loaded library's existing 32-entry limit, not additional files outside that list.
 
@@ -155,7 +155,6 @@ Minimal format:
 {
   "version": "1.0",
   "global_settings": {
-    "sample_ram_budget_bytes": 1048576,
     "panic_note": 24
   },
   "midi_assignments": [
@@ -178,7 +177,8 @@ Notes:
 - `volume = 100`: unity per-voice gain; a single sample keeps its original level (no automatic normalization of quiet WAV files)
 - `sample_path`: full SD path, for example `/samples/snare.wav`
 - maximum assignments in the settings structure: `128`; the UI catalog holds at most `32` samples and assigns each sample to one note
-- without a readable configuration, loading begins from defaults: no assignments, no panic note, a 1 MiB RAM budget, and one-shot playback
+- without a readable configuration, loading begins from defaults: no assignments, no panic note, and one-shot playback
+- `sample_ram_budget_bytes`, written by older firmware, is ignored; the RAM pool is sized automatically (section 6)
 
 The writer also saves `sample_playback_modes`, an array of `sample_path` / `playback_mode` objects. The UI save flow includes library samples set to `loop`, including those without note assignments; omitted unassigned samples use the default `shot` mode. Assigned sample volumes are saved in `midi_assignments`; unassigned preview volumes are not persisted.
 
@@ -194,8 +194,11 @@ Sample preparation pipeline:
   - `16-bit`,
   - `44100 Hz`,
   - `mono`,
-  - duration `<= 5.0 s`,
-  - fit into the RAM budget,
+  - fit into the RAM budget; there is no per-sample duration limit,
+- the budget is the largest free PSRAM block at the first preparation minus a 512 KiB reserve (`SampleRamManager::budgetBytes()`); without PSRAM it falls back to 1 MiB,
+- the first 16 KiB of every assigned sample is reserved before packing (`SampleClassifier::kStreamHeadBytes`); samples that end up streaming keep that start in RAM so they begin without waiting for SD. If even these starts do not fit, none are reserved,
+- when the assigned samples do not all fit, they are packed shortest first, so the fewest samples stream from SD,
+- preload reads 32 KiB chunks; Serial reports the loaded count, size and time. At the 4 MHz SD fallback, a full pool takes several seconds to load at boot and on every `SAVE`,
 - if preload fails, the entry falls back to `STREAM`.
 - if assigned sample format is unsupported/missing, playback for that note is blocked (`UNAVAILABLE`) instead of trying to decode anyway.
 
@@ -215,9 +218,7 @@ Playback engine behavior:
 
 Important behavior:
 
-- RAM pool budget is "locked" after the first `prepare()` (`sample_ram_manager.cpp`),
-- changing `sample_ram_budget_bytes` in the same runtime session is recorded in the preparation result as `fixedBudgetMismatch`,
-- a real budget change requires a device reboot.
+- the RAM pool is allocated once at the first `prepare()` and never resized (`sample_ram_manager.cpp`); later saves repack samples into the same pool.
 
 ### Mixing level policy
 
@@ -281,13 +282,9 @@ Assignment rules:
 - Encoder detent: `4` ticks
 - Long press (right encoder): `700 ms`
 
-### `include/sample_classifier.h`
-
-- RAM preload threshold: `kFixedPreloadThresholdSeconds = 5.0f`
-
 ### `include/settings_store.h`
 
-- Default RAM budget: `kDefaultSampleRamBudgetBytes = 1 MB`
+- Fallback RAM budget without PSRAM: `kDefaultSampleRamBudgetBytes = 1 MB`
 
 ### `include/ui.h`
 
@@ -396,7 +393,7 @@ The repository workflow runs native tests and builds the main firmware. Pushes t
 
 `pio test -e native` covers UI navigation, sample/panic learning, keypad mapping, saving state, and playback routing, including RAM-to-stream fallback and loop control. The `test_audio_playback` suite additionally runs the real WAV decoder, voice engine, source adapters, budgeted fades and mixer against simulated SD/I2S hardware. It compares sample timelines, tests 2/8/32 overlapping voices at high levels, and includes negative controls for missing, repeated, zeroed and spiked PCM. See [coverage and limits](audio-regression.md). Host tests do not measure ESP32 deadlines, actual SD throughput or analog output.
 
-Main firmware serial output includes keypad diagnostics, WAV rejection reasons and codec volume-register verification at boot. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
+Main firmware serial output includes keypad diagnostics, WAV rejection reasons and codec volume-register verification at boot. It also reports the SD SPI clock the card mounted at (20 MHz, falling back to 10 or 4 MHz). During playback, a line starting with `Audio:` appears in any second with new I2S underruns or SD reads slower than 3 ms. Underruns make the DMA replay stale blocks, heard as stutter and stretched-sounding playback; a quiet log means playback kept up. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
 
 ## 10. Module Map (Code Orientation)
 

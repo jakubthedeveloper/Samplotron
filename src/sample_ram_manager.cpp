@@ -2,18 +2,25 @@
 
 #include <SD.h>
 #include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <stdlib.h>
 #include <string.h>
 
 namespace {
 
-constexpr size_t kReadChunkBytes = 1024;
+// Reads larger than the 4 KiB stdio buffer go straight to FATFS as
+// multi-sector transfers, which matters at the 4 MHz fallback SD clock.
+constexpr size_t kReadChunkBytes = 32 * 1024;
+// PSRAM left for everything else (JSON documents, FATFS state, buffers).
+constexpr uint32_t kPsramReserveBytes = 512UL * 1024UL;
 
 struct LoadedEntry {
   String path;
   uint32_t dataBytes = 0;
   uint32_t poolOffset = 0;
   bool valid = false;
+  bool head = false;  // Only the start of a streamed sample.
 };
 
 uint8_t *gPool = nullptr;
@@ -28,6 +35,7 @@ void clearLoadedEntries() {
     gLoadedEntries[i].dataBytes = 0;
     gLoadedEntries[i].poolOffset = 0;
     gLoadedEntries[i].valid = false;
+    gLoadedEntries[i].head = false;
   }
 }
 
@@ -55,13 +63,26 @@ bool allocatePool(uint32_t budgetBytes) {
   return true;
 }
 
-int findLoadedEntryByPath(const String &path) {
+int findLoadedEntryByPath(const String &path, bool head) {
   for (int i = 0; i < SettingsStore::SamplerSettings::kMaxAssignments; i++) {
-    if (gLoadedEntries[i].valid && gLoadedEntries[i].path == path) {
+    if (gLoadedEntries[i].valid && gLoadedEntries[i].head == head && gLoadedEntries[i].path == path) {
       return i;
     }
   }
   return -1;
+}
+
+bool loadedDataAt(int idx, SampleRamManager::LoadedSampleData &data) {
+  data = SampleRamManager::LoadedSampleData{};
+  if (idx < 0 || !gPool) return false;
+  const uint32_t offset = gLoadedEntries[idx].poolOffset;
+  const uint32_t bytes = gLoadedEntries[idx].dataBytes;
+  if (bytes == 0 || offset > gPoolCapacity || (gPoolCapacity - offset) < bytes) {
+    return false;
+  }
+  data.data = gPool + offset;
+  data.dataBytes = bytes;
+  return true;
 }
 
 int findFreeLoadedEntrySlot() {
@@ -89,6 +110,9 @@ bool readFileRangeToBuffer(const String &path, uint32_t offset, uint32_t size, u
       return false;
     }
     totalRead += static_cast<uint32_t>(readNow);
+    // SPI SD transfers busy-wait. Loading several MiB would otherwise keep
+    // this core from IDLE long enough to trip the task watchdog.
+    vTaskDelay(1);
   }
 
   file.close();
@@ -99,28 +123,39 @@ bool readFileRangeToBuffer(const String &path, uint32_t offset, uint32_t size, u
 
 namespace SampleRamManager {
 
+uint32_t budgetBytes() {
+  if (!gPoolBudgetLocked) {
+    // The pool is allocated once and never resized, so size it from PSRAM
+    // available at the first preparation rather than a fixed setting.
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    gFixedPoolBudget = largest > kPsramReserveBytes
+                           ? static_cast<uint32_t>(largest - kPsramReserveBytes)
+                           : SettingsStore::SamplerSettings::kDefaultSampleRamBudgetBytes;
+    gPoolBudgetLocked = true;
+  }
+  return gFixedPoolBudget;
+}
+
 bool prepare(const SettingsStore::SamplerSettings &settings,
              const SampleClassifier::ClassificationReport &classification,
              LoadReport &report) {
   report = LoadReport{};
   report.budgetBytes = settings.sampleRamBudgetBytes;
-
-  if (!gPoolBudgetLocked) {
-    gPoolBudgetLocked = true;
-    gFixedPoolBudget = settings.sampleRamBudgetBytes;
-  }
-  report.effectiveBudgetBytes = gFixedPoolBudget;
+  report.effectiveBudgetBytes = budgetBytes();
   if (settings.sampleRamBudgetBytes != gFixedPoolBudget) {
     report.fixedBudgetMismatch = true;
   }
 
   for (int i = 0; i < classification.itemCount; i++) {
-    if (classification.items[i].mode == SampleClassifier::StorageMode::Ram) {
+    const SampleClassifier::AssignedSampleClassification &item = classification.items[i];
+    if (item.mode == SampleClassifier::StorageMode::Ram) {
       report.requestedRamCount++;
+    } else if (item.mode == SampleClassifier::StorageMode::Stream && item.headBytes > 0) {
+      report.requestedHeadCount++;
     }
   }
 
-  if (report.requestedRamCount == 0) {
+  if (report.requestedRamCount == 0 && report.requestedHeadCount == 0) {
     clearLoadedEntries();
     report.allocatedBytes = gPoolCapacity;
     return true;
@@ -138,40 +173,45 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
 
   for (int i = 0; i < classification.itemCount; i++) {
     const SampleClassifier::AssignedSampleClassification &item = classification.items[i];
-    if (item.mode != SampleClassifier::StorageMode::Ram) {
+    const bool head = item.mode == SampleClassifier::StorageMode::Stream && item.headBytes > 0;
+    if (item.mode != SampleClassifier::StorageMode::Ram && !head) {
+      continue;
+    }
+    const uint32_t bytes = head ? item.headBytes : item.dataBytes;
+
+    if (findLoadedEntryByPath(item.path, head) >= 0) {
+      if (head) report.loadedHeadCount++;
+      else report.loadedRamCount++;
       continue;
     }
 
-    const int existingIndex = findLoadedEntryByPath(item.path);
-    if (existingIndex >= 0) {
-      report.loadedRamCount++;
+    // A missing head only delays that sample's start; it still streams.
+    if (bytes == 0 || bytes > gPoolCapacity || (gPoolCapacity - used) < bytes) {
+      if (!head) report.fallbackToStreamCount++;
       continue;
     }
 
-    if (item.dataBytes == 0 || item.dataBytes > gPoolCapacity || (gPoolCapacity - used) < item.dataBytes) {
-      report.fallbackToStreamCount++;
-      continue;
-    }
-
-    if (!readFileRangeToBuffer(item.path, item.dataOffset, item.dataBytes, gPool + used)) {
+    if (!readFileRangeToBuffer(item.path, item.dataOffset, bytes, gPool + used)) {
       report.readErrorCount++;
-      report.fallbackToStreamCount++;
+      if (!head) report.fallbackToStreamCount++;
       continue;
     }
 
     const int slot = findFreeLoadedEntrySlot();
     if (slot < 0) {
-      report.fallbackToStreamCount++;
+      if (!head) report.fallbackToStreamCount++;
       continue;
     }
 
     gLoadedEntries[slot].path = item.path;
-    gLoadedEntries[slot].dataBytes = item.dataBytes;
+    gLoadedEntries[slot].dataBytes = bytes;
     gLoadedEntries[slot].poolOffset = used;
     gLoadedEntries[slot].valid = true;
+    gLoadedEntries[slot].head = head;
 
-    used += item.dataBytes;
-    report.loadedRamCount++;
+    used += bytes;
+    if (head) report.loadedHeadCount++;
+    else report.loadedRamCount++;
   }
 
   report.usedBytes = used;
@@ -186,7 +226,7 @@ void release() {
 }
 
 bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info) {
-  const int idx = findLoadedEntryByPath(path);
+  const int idx = findLoadedEntryByPath(path, false);
   if (idx < 0) return false;
   info.dataBytes = gLoadedEntries[idx].dataBytes;
   info.poolOffset = gLoadedEntries[idx].poolOffset;
@@ -194,19 +234,11 @@ bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info) {
 }
 
 bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data) {
-  data = LoadedSampleData{};
-  const int idx = findLoadedEntryByPath(path);
-  if (idx < 0 || !gPool) return false;
+  return loadedDataAt(findLoadedEntryByPath(path, false), data);
+}
 
-  const uint32_t offset = gLoadedEntries[idx].poolOffset;
-  const uint32_t bytes = gLoadedEntries[idx].dataBytes;
-  if (bytes == 0 || offset > gPoolCapacity || (gPoolCapacity - offset) < bytes) {
-    return false;
-  }
-
-  data.data = gPool + offset;
-  data.dataBytes = bytes;
-  return true;
+bool getLoadedHeadByPath(const String &path, LoadedSampleData &data) {
+  return loadedDataAt(findLoadedEntryByPath(path, true), data);
 }
 
 }  // namespace SampleRamManager

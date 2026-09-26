@@ -25,10 +25,16 @@ struct LoadReport {
   uint32_t usedBytes = 0;
   int requestedRamCount = 0;
   int loadedRamCount = 0;
+  int requestedHeadCount = 0;
+  int loadedHeadCount = 0;
   int fallbackToStreamCount = 0;
   int readErrorCount = 0;
   bool fixedBudgetMismatch = false;
 };
+
+// RAM pool size: free PSRAM at the first call minus a reserve, then fixed
+// until release(). Falls back to kDefaultSampleRamBudgetBytes without PSRAM.
+uint32_t budgetBytes();
 
 bool prepare(const SettingsStore::SamplerSettings &settings,
              const SampleClassifier::ClassificationReport &classification,
@@ -36,6 +42,8 @@ bool prepare(const SettingsStore::SamplerSettings &settings,
 
 bool getLoadedSampleByPath(const String &path, LoadedSampleInfo &info);
 bool getLoadedSampleDataByPath(const String &path, LoadedSampleData &data);
+// Start of a streamed sample, preloaded so playback begins before SD data.
+bool getLoadedHeadByPath(const String &path, LoadedSampleData &data);
 void release();
 
 }  // namespace SampleRamManager

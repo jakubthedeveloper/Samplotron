@@ -79,6 +79,7 @@ class StableAudioOutputI2S : public AudioOutputI2S {
  public:
   StableAudioOutputI2S(int port, int outputMode, int dmaCount, int useApll);
 
+  bool begin() override;
   bool SetRate(int hz) override;
 
   bool ConsumeSample(int16_t sample[2]) override;
@@ -86,12 +87,16 @@ class StableAudioOutputI2S : public AudioOutputI2S {
   uint32_t rateSetCalls() const;
   uint32_t skippedRateSetCalls() const;
   uint32_t appliedRateSetCalls() const;
+  // DMA blocks replayed because no new PCM arrived in time (ESP32 only).
+  uint32_t underrunCount() const;
 
  private:
 #ifdef ESP32
   static size_t writeBlock(void *context, const uint8_t *data, size_t bytes);
+  static bool onSendQueueOverflow(i2s_chan_handle_t handle, i2s_event_data_t *event, void *context);
   PcmBlockBuffer block_;
 #endif
+  volatile uint32_t underrunCount_ = 0;
   int lastRateHz_ = -1;
   uint32_t rateSetCalls_ = 0;
   uint32_t skippedRateSetCalls_ = 0;
@@ -125,6 +130,7 @@ struct VoiceState {
   FreshStartAudioGeneratorWAV *wav = nullptr;
   AudioFileSourceRamWav *ramSource = nullptr;
   AudioFileSource *activeSource = nullptr;
+  StreamManager::SdStream *stream = nullptr;  // Set for StreamPath voices.
   SamplerMixerInput *stub = nullptr;
   BudgetedAudioOutput *budgetedOut = nullptr;
   float targetGain = 0.0f;  // Per-voice gain from sample volume (0..1), before playback fades.
@@ -174,6 +180,8 @@ int allocateVoiceSlot(EngineState *impl, int16_t retriggerGroupId, bool &voiceWa
 bool beginVoiceFromPath(EngineState *impl,
                         int voiceIndex,
                         const String &samplePath,
+                        const uint8_t *head,
+                        uint32_t headBytes,
                         uint8_t volume,
                         int16_t retriggerGroupId,
                         bool loopEnabled,

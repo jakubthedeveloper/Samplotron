@@ -34,6 +34,23 @@ void test_esp32_adapter_packs_full_level_pcm_without_extra_attenuation() {
     TEST_ASSERT_EQUAL_INT(32767, frame[0]); TEST_ASSERT_EQUAL_INT(-32767, frame[1]);
   }
 }
+void test_esp32_adapter_counts_dma_underruns_and_stays_enabled() {
+  FakeI2S::reset();
+  AudioInternal::StableAudioOutputI2S out(0, 0, 8, 1);
+  TEST_ASSERT_TRUE(out.begin());
+  TEST_ASSERT_EQUAL_INT(1, FakeI2S::enabled);
+  TEST_ASSERT_NOT_NULL(FakeI2S::onSendQueueOverflow);
+  TEST_ASSERT_EQUAL_UINT32(0, out.underrunCount());
+  FakeI2S::underrun();
+  FakeI2S::underrun();
+  TEST_ASSERT_EQUAL_UINT32(2, out.underrunCount());
+  FakeI2S::capacity = 128;
+  for (int i = 0; i < 128; ++i) {
+    int16_t frame[2] = {1, -1};
+    TEST_ASSERT_TRUE(out.ConsumeSample(frame));
+  }
+  TEST_ASSERT_EQUAL_UINT(128, FakeI2S::frames.size());
+}
 void test_one_driver_call_per_dma_block_preserves_signed_stereo_pcm() {
   PcmBlockBuffer block; Writer w; std::vector<uint8_t> expected;
   for (int i = 0; i < 4096; ++i) {
@@ -99,6 +116,7 @@ void setUp() {} void tearDown() {}
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_esp32_adapter_packs_full_level_pcm_without_extra_attenuation);
+  RUN_TEST(test_esp32_adapter_counts_dma_underruns_and_stays_enabled);
   RUN_TEST(test_one_driver_call_per_dma_block_preserves_signed_stereo_pcm);
   RUN_TEST(test_short_writes_and_timeouts_retain_exact_byte_suffix);
   RUN_TEST(test_clock_keeps_running_during_processing_and_driver_calls);

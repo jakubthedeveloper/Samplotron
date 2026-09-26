@@ -13,6 +13,10 @@ namespace {
 constexpr UBaseType_t kAudioTaskPriority = 6;
 constexpr UBaseType_t kLoaderTaskPriority = 4;
 constexpr UBaseType_t kUiTaskPriority = 2;
+// Above the UI so streams stay fed; the reader yields every 10 ms of SD work.
+constexpr UBaseType_t kSdReaderTaskPriority = 3;
+constexpr BaseType_t kSdReaderTaskCore = 0;
+constexpr uint32_t kDiagnosticsIntervalMs = 1000;
 constexpr BaseType_t kAudioTaskCore = 1;
 constexpr BaseType_t kLoaderTaskCore = 0;
 constexpr BaseType_t kUiTaskCore = 0;
@@ -22,6 +26,8 @@ constexpr uint16_t kUiStatusQueueLength = 16;
 constexpr uint16_t kAudioTaskStackWords = 6144;
 constexpr uint16_t kLoaderTaskStackWords = 6144;
 constexpr uint16_t kUiTaskStackWords = 8192;
+// Preloading several MiB of samples at the 4 MHz SD fallback takes seconds.
+constexpr uint32_t kBootRebuildTimeoutMs = 60000;
 
 const char *startupTitleForResetReason() {
   const esp_reset_reason_t reason = esp_reset_reason();
@@ -42,7 +48,7 @@ void SamplerApp::setup() {
   if (!startTasks()) {
     return;
   }
-  if (!requestLoaderRebuildAndWait(8000)) {
+  if (!requestLoaderRebuildAndWait(kBootRebuildTimeoutMs)) {
     return;
   }
   if (!CodecES8388::unmute()) {
@@ -128,6 +134,13 @@ bool SamplerApp::startTasks() {
     return false;
   }
 
+  // SD reads for streamed samples run on core 0, so the audio task on core 1
+  // never waits for the card. Without the task, playback still works but
+  // reads block the audio task.
+  if (!audio_.startStreamReader(kSdReaderTaskPriority, kSdReaderTaskCore)) {
+    Serial.println("Audio: SD reader task failed; streaming from the audio task");
+  }
+
   if (!triggerEngine_.begin(
           &audio_,
           kAudioTaskPriority,
@@ -171,6 +184,34 @@ void SamplerApp::renderBootScreen(bool loading) {
 
 void SamplerApp::loop() {
   vTaskDelay(pdMS_TO_TICKS(1000));
+}
+
+void SamplerApp::logStreamingDiagnostics() {
+  // Runs once per second from the UI task on core 0: the audio task keeps
+  // core 1 busy while voices play. Report only seconds with new problems, so
+  // a quiet log means playback kept up.
+  const Audio::StreamingDiagnostics now = audio_.streamingDiagnostics();
+  const Audio::StreamingDiagnostics &last = loggedDiagnostics_;
+  const uint32_t sdBytesPerSecond = now.sdBytesRead - lastSdBytesRead_;
+  lastSdBytesRead_ = now.sdBytesRead;
+  if (now.i2sUnderrunCount == last.i2sUnderrunCount &&
+      now.starvedUpdateCount == last.starvedUpdateCount &&
+      now.sdNoFreeStreamCount == last.sdNoFreeStreamCount &&
+      now.sdOpenFailureCount == last.sdOpenFailureCount) {
+    return;
+  }
+  Serial.printf("Audio: +%lu I2S underruns, +%lu starved SD voice updates, +%lu SD triggers "
+                "without a free stream, +%lu SD open failures; SD %lu KiB/s at %lu Hz, "
+                "max read %lu us for %lu B\n",
+                static_cast<unsigned long>(now.i2sUnderrunCount - last.i2sUnderrunCount),
+                static_cast<unsigned long>(now.starvedUpdateCount - last.starvedUpdateCount),
+                static_cast<unsigned long>(now.sdNoFreeStreamCount - last.sdNoFreeStreamCount),
+                static_cast<unsigned long>(now.sdOpenFailureCount - last.sdOpenFailureCount),
+                static_cast<unsigned long>(sdBytesPerSecond / 1024U),
+                static_cast<unsigned long>(StorageSD::spiFrequencyHz()),
+                static_cast<unsigned long>(now.sdMaxReadUs),
+                static_cast<unsigned long>(now.sdMaxReadBytes));
+  loggedDiagnostics_ = now;
 }
 
 void SamplerApp::uiTaskEntry(void *param) {
@@ -245,7 +286,12 @@ void SamplerApp::processLoaderCommand(const LoaderCommand &command) {
 }
 
 void SamplerApp::runUiTask() {
+  uint32_t lastDiagnosticsMs = millis();
   while (true) {
+    if (millis() - lastDiagnosticsMs >= kDiagnosticsIntervalMs) {
+      lastDiagnosticsMs = millis();
+      logStreamingDiagnostics();
+    }
     midi_.update();
     callbackBinder_.pollInput(input_);
     ui_.update();

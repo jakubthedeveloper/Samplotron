@@ -203,9 +203,8 @@ bool loadFromSd(SamplerSettings &settings) {
   JsonObject globalSettings = gSettingsJsonDoc["global_settings"].as<JsonObject>();
   bool defaultLoopPlaybackEnabled = false;
   if (!globalSettings.isNull()) {
-    if (globalSettings["sample_ram_budget_bytes"].is<uint32_t>()) {
-      settings.sampleRamBudgetBytes = globalSettings["sample_ram_budget_bytes"].as<uint32_t>();
-    }
+    // "sample_ram_budget_bytes" from older firmware is ignored: the RAM pool
+    // is sized from free PSRAM (SampleRamManager::budgetBytes()).
     const long panicNote = globalSettings["panic_note"] | -1;
     settings.panicNote = isValidNote(panicNote) ? static_cast<int16_t>(panicNote) : -1;
     defaultLoopPlaybackEnabled =
@@ -275,7 +274,6 @@ bool saveToSd(const SamplerSettings &settings) {
       (settings.version.length() > 0) ? settings.version : String(kCurrentVersion);
 
   JsonObject globalSettings = gSettingsJsonDoc.createNestedObject("global_settings");
-  globalSettings["sample_ram_budget_bytes"] = settings.sampleRamBudgetBytes;
   if (settings.panicNote >= 0 && settings.panicNote <= 127) {
     globalSettings["panic_note"] = settings.panicNote;
   }

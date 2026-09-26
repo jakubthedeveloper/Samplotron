@@ -190,6 +190,11 @@ void TriggerEngine::processTriggerEvent(const TriggerEvent &event) {
   }
 
   if (event.path[0] != '\0') {
-    audio_->playSamplePath(String(event.path), event.volume, event.retriggerGroupId, event.loopEnabled);
+    audio_->playSamplePath(String(event.path),
+                           event.volume,
+                           event.retriggerGroupId,
+                           event.loopEnabled,
+                           event.streamHead,
+                           event.streamHeadBytes);
   }
 }

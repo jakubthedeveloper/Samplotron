@@ -2,6 +2,7 @@
 
 #include "AudioOutput.h"
 #include <cstddef>
+#include <cstdint>
 
 namespace AudioInternal {
 
@@ -45,6 +46,7 @@ class SamplerMixer {
   bool start(int id);
   bool consume(int id, float left, float right);
   bool emit(float left, float right);
+  int queued(int id) const;
   AudioOutput *sink_;
   Frame *mix_ = nullptr;
   int capacity_;
@@ -52,7 +54,9 @@ class SamplerMixer {
   bool sinkStarted_ = false;
   bool allocated_[kMaxInputs] = {};
   bool running_[kMaxInputs] = {};
-  int queued_[kMaxInputs] = {};
+  // Absolute frame positions; queued(id) = written_[id] - emitted_.
+  uint32_t written_[kMaxInputs] = {};
+  uint32_t emitted_ = 0;
   Frame delay_[kLookaheadSamples];
   int delayHead_ = 0;
   float gain_ = 1;

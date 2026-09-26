@@ -83,7 +83,7 @@ bool Audio::begin() {
     return false;
   }
 
-  if (!impl_->streamManager.begin(kVoiceCount, catalog_)) {
+  if (!impl_->streamManager.begin(catalog_)) {
     delete impl_->mixer;
     impl_->mixer = nullptr;
     delete impl_->waveformOut;
@@ -121,9 +121,16 @@ bool Audio::begin() {
   return true;
 }
 
+bool Audio::startStreamReader(uint8_t priority, int core) {
+  return impl_ && impl_->streamManager.startReaderTask(priority, core);
+}
+
 void Audio::update() {
   if (!impl_) return;
   const uint32_t nowUs = micros();
+  if (!impl_->streamManager.hasReaderTask()) {
+    impl_->streamManager.serviceAll();
+  }
 
   AudioInternal::refreshStats(impl_);
 
@@ -160,6 +167,22 @@ void Audio::update() {
       }
     }
 
+    if (voice.stream && !voice.stream->ready()) {
+      if (voice.stream->failed() || voice.stopping) {
+        AudioInternal::stopVoice(voice);
+        stateChanged = true;
+        continue;
+      }
+      // The card fell behind for this voice only. Feed it silence so the
+      // mixer, which advances in lockstep, keeps every other voice playing.
+      impl_->streamManager.noteStarvedUpdate();
+      int16_t silence[2] = {0, 0};
+      for (uint16_t n = 0; n < AudioInternal::kVoiceLoopSampleBudget; n++) {
+        if (!voice.stub->ConsumeSample(silence)) break;
+      }
+      continue;
+    }
+
     if (voice.budgetedOut) {
       voice.budgetedOut->resetBudget(AudioInternal::kVoiceLoopSampleBudget);
     }
@@ -186,7 +209,9 @@ void Audio::update() {
 void Audio::playSamplePath(const String &samplePath,
                            uint8_t volume,
                            int16_t retriggerGroupId,
-                           bool loopEnabled) {
+                           bool loopEnabled,
+                           const uint8_t *head,
+                           uint32_t headBytes) {
   if (!impl_ || samplePath.length() == 0) return;
   const uint32_t fadeInUs = 0;
 
@@ -200,8 +225,15 @@ void Audio::playSamplePath(const String &samplePath,
   AudioInternal::VoiceState &voice = impl_->voices[voiceIndex];
 
   AudioInternal::stopVoice(voice);
-  if (!AudioInternal::beginVoiceFromPath(
-          impl_, voiceIndex, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs)) {
+  if (!AudioInternal::beginVoiceFromPath(impl_,
+                                         voiceIndex,
+                                         samplePath,
+                                         head,
+                                         headBytes,
+                                         volume,
+                                         retriggerGroupId,
+                                         loopEnabled,
+                                         fadeInUs)) {
     AudioInternal::refreshStats(impl_);
     return;
   }
@@ -251,6 +283,7 @@ void Audio::setLoopEnabledForGroup(int16_t retriggerGroupId, bool loopEnabled) {
     if (!voice.active) continue;
     if (voice.retriggerGroupId != retriggerGroupId) continue;
     voice.loopEnabled = loopEnabled;
+    if (voice.stream) voice.stream->setLoop(loopEnabled);
   }
 }
 
@@ -302,6 +335,21 @@ Audio::RuntimeStats Audio::runtimeStats() const {
 uint32_t Audio::voiceStealCount() const {
   if (!impl_) return 0;
   return impl_->stats.voiceStealCount;
+}
+
+Audio::StreamingDiagnostics Audio::streamingDiagnostics() const {
+  StreamingDiagnostics diagnostics;
+  if (!impl_) return diagnostics;
+  if (impl_->out) diagnostics.i2sUnderrunCount = impl_->out->underrunCount();
+  const StreamManager::Diagnostics &sd = impl_->streamManager.diagnostics();
+  diagnostics.starvedUpdateCount = sd.starvedUpdateCount;
+  diagnostics.sdReadCount = sd.readCount;
+  diagnostics.sdBytesRead = sd.bytesRead;
+  diagnostics.sdMaxReadUs = sd.maxReadUs;
+  diagnostics.sdMaxReadBytes = sd.maxReadBytes;
+  diagnostics.sdOpenFailureCount = sd.openFailureCount;
+  diagnostics.sdNoFreeStreamCount = sd.noFreeStreamCount;
+  return diagnostics;
 }
 
 bool Audio::waveformSnapshot(WaveformSnapshot &snapshot) const {
