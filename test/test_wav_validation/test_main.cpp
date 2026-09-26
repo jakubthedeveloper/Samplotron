@@ -111,13 +111,23 @@ void test_classifier_preloads_long_samples_shortest_first_within_budget() {
   SampleClassifier::classifyAssignedSamples(settings, catalog, report);
   TEST_ASSERT_EQUAL_INT(3, report.ramSampleCount);
   TEST_ASSERT_EQUAL_UINT32(33 * 88200, report.sampleRamUsedBytes);
-  // Only 13 s fit: the two shortest go to RAM regardless of assignment order.
-  settings.sampleRamBudgetBytes = 13 * 88200;
+  TEST_ASSERT_EQUAL_UINT32(0, report.items[1].headBytes);
+  // 13 s plus one head fit: the two shortest go to RAM regardless of
+  // assignment order, and the streamed one keeps its start in RAM.
+  const uint32_t head = SampleClassifier::kStreamHeadBytes;
+  settings.sampleRamBudgetBytes = 13 * 88200 + head;
   SampleClassifier::classifyAssignedSamples(settings, catalog, report);
   TEST_ASSERT_TRUE(report.items[0].mode == SampleClassifier::StorageMode::Ram);
   TEST_ASSERT_TRUE(report.items[1].mode == SampleClassifier::StorageMode::Stream);
   TEST_ASSERT_TRUE(report.items[2].mode == SampleClassifier::StorageMode::Ram);
+  TEST_ASSERT_EQUAL_UINT32(head, report.items[1].headBytes);
+  TEST_ASSERT_EQUAL_UINT32(13 * 88200 + head, report.sampleRamUsedBytes);
   TEST_ASSERT_EQUAL_INT(2, report.ramSampleCount); TEST_ASSERT_EQUAL_INT(1, report.streamSampleCount);
+  // Without room for the head, the 10 s sample streams too.
+  settings.sampleRamBudgetBytes = 13 * 88200;
+  SampleClassifier::classifyAssignedSamples(settings, catalog, report);
+  TEST_ASSERT_TRUE(report.items[0].mode == SampleClassifier::StorageMode::Stream);
+  TEST_ASSERT_EQUAL_UINT32(head, report.items[0].headBytes);
 }
 SampleLibrary::Catalog catalogWith(const Bytes &file) {
   FakeSD::files.clear(); FakeSD::files["/samples/x.wav"]=file;
@@ -151,6 +161,24 @@ void test_looping_stream_buffers_next_iteration() {
   TEST_ASSERT_EQUAL_UINT32(52,stream->read(second,100)); TEST_ASSERT_EQUAL_INT(reads,FakeSD::reads);
   TEST_ASSERT_EQUAL_MEMORY(first,second,52);
 }
+void test_preloaded_head_plays_before_sd_and_is_not_reread() {
+  Bytes b(44+600); WavValidation::pcmHeader(b.data(),600);
+  for (int i=0;i<600;++i) b[44+i]=uint8_t(i*7+1);
+  auto catalog=catalogWith(b); StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
+  const Bytes head(b.begin()+44,b.begin()+44+300);
+  auto *stream=streams.openStream("/samples/x.wav",true,head.data(),300);
+  // Playable before the reader has opened the file.
+  uint8_t out[700]={}; FakeSD::bytesRead=0;
+  TEST_ASSERT_TRUE(stream->ready()); TEST_ASSERT_EQUAL_UINT32(44,stream->read(out,44));
+  TEST_ASSERT_EQUAL_UINT32(300,stream->read(out,700)); TEST_ASSERT_EQUAL_MEMORY(head.data(),out,300);
+  TEST_ASSERT_EQUAL_size_t(0,FakeSD::bytesRead); TEST_ASSERT_FALSE(stream->ready());
+  streams.serviceAll(); TEST_ASSERT_TRUE(stream->ready());
+  // The reader skips the head on every iteration of the loop.
+  TEST_ASSERT_GREATER_THAN(0,FakeSD::bytesRead); TEST_ASSERT_EQUAL_size_t(0,FakeSD::bytesRead%300);
+  TEST_ASSERT_EQUAL_UINT32(300,stream->read(out,700)); TEST_ASSERT_EQUAL_MEMORY(b.data()+344,out,300);
+  stream->rewind(); TEST_ASSERT_EQUAL_UINT32(44,stream->read(out,44));
+  TEST_ASSERT_EQUAL_UINT32(600,stream->read(out,700)); TEST_ASSERT_EQUAL_MEMORY(b.data()+44,out,600);
+}
 void test_stream_rejects_unchecked_and_truncated_files() {
   auto catalog=catalogWith(fixture()); StreamManager streams; TEST_ASSERT_TRUE(streams.begin(&catalog));
   TEST_ASSERT_NULL(streams.openStream("/samples/missing.wav",false));
@@ -176,6 +204,7 @@ int main(){UNITY_BEGIN();
  RUN_TEST(test_classifier_preloads_long_samples_shortest_first_within_budget);
  RUN_TEST(test_stream_uses_virtual_header_and_cached_data_bounds);
  RUN_TEST(test_looping_stream_buffers_next_iteration);
+ RUN_TEST(test_preloaded_head_plays_before_sd_and_is_not_reread);
  RUN_TEST(test_stream_rejects_unchecked_and_truncated_files);
  RUN_TEST(test_all_streams_in_use_rejects_trigger);
  return UNITY_END();}

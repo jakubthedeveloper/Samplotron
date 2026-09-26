@@ -84,6 +84,11 @@ void SamplerPlaybackRouter::onAssignedMidiNoteOn(int midiNote) const {
   event.retriggerGroupId = static_cast<int16_t>(sampleIndex);
   event.loopEnabled = ui_->sampleLoopPlaybackEnabled(sampleIndex);
   assignedPath.toCharArray(event.path, sizeof(event.path));
+  SampleRamManager::LoadedSampleData head;
+  if (hasPreparedEntry && SampleRamManager::getLoadedHeadByPath(assignedPath, head)) {
+    event.streamHead = head.data;
+    event.streamHeadBytes = head.dataBytes;
+  }
   triggerEngine_->enqueue(event);
 }
 

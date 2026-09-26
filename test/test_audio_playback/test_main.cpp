@@ -131,6 +131,25 @@ void test_slot_reuse_after_natural_end_has_no_stale_pcm() {
   TEST_ASSERT_EQUAL_UINT(0, rig.audio.voiceStealCount());
 }
 
+void test_preloaded_head_matches_plain_sd_stream() {
+  // Head shorter than the sample, and one covering all of it (no SD reads).
+  for (bool loop : {false, true}) for (uint32_t headBytes : {4096u, 20000u}) {
+    FakeSD::files.clear(); const auto pcm = tone(7003, 197, 10000); saveWav("/samples/a.wav", pcm);
+    const auto *head = reinterpret_cast<const uint8_t *>(pcm.data());
+    std::vector<std::array<int16_t, 2>> plain;
+    for (bool withHead : {false, true}) {
+      Rig rig; rig.begin();
+      rig.audio.playSamplePath("/samples/a.wav", 100, -1, loop, withHead ? head : nullptr,
+                               withHead ? headBytes : 0);
+      rig.advance(3 * pcm.size() + kDelay, true);
+      if (!withHead) plain = FakeI2S::frames;
+    }
+    TEST_ASSERT_EQUAL_UINT(plain.size(), FakeI2S::frames.size());
+    for (size_t i = 0; i < plain.size(); ++i) TEST_ASSERT_EQUAL_MEMORY(plain[i].data(), FakeI2S::frames[i].data(), 4);
+    if (!loop) { Pcm expected(pcm); expected.resize(3 * pcm.size(), 0); assertReference(expected); }
+  }
+}
+
 int largestStep(size_t first, size_t end) {
   int step = 0;
   for (size_t i = std::max(size_t(1), first); i < end; ++i)
@@ -250,6 +269,7 @@ int main() { UNITY_BEGIN();
  RUN_TEST(test_staggered_mixed_ram_sd_voices_preserve_timeline);
  RUN_TEST(test_retrigger_matches_independent_fade_and_new_voice);
  RUN_TEST(test_slot_reuse_after_natural_end_has_no_stale_pcm);
+ RUN_TEST(test_preloaded_head_matches_plain_sd_stream);
 
  RUN_TEST(test_nonzero_start_is_ramped_without_reducing_sustain);
  RUN_TEST(test_nonzero_eof_is_ramped_without_cutting_other_voice);

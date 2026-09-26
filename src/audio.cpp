@@ -209,7 +209,9 @@ void Audio::update() {
 void Audio::playSamplePath(const String &samplePath,
                            uint8_t volume,
                            int16_t retriggerGroupId,
-                           bool loopEnabled) {
+                           bool loopEnabled,
+                           const uint8_t *head,
+                           uint32_t headBytes) {
   if (!impl_ || samplePath.length() == 0) return;
   const uint32_t fadeInUs = 0;
 
@@ -223,8 +225,15 @@ void Audio::playSamplePath(const String &samplePath,
   AudioInternal::VoiceState &voice = impl_->voices[voiceIndex];
 
   AudioInternal::stopVoice(voice);
-  if (!AudioInternal::beginVoiceFromPath(
-          impl_, voiceIndex, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs)) {
+  if (!AudioInternal::beginVoiceFromPath(impl_,
+                                         voiceIndex,
+                                         samplePath,
+                                         head,
+                                         headBytes,
+                                         volume,
+                                         retriggerGroupId,
+                                         loopEnabled,
+                                         fadeInUs)) {
     AudioInternal::refreshStats(impl_);
     return;
   }

@@ -42,6 +42,15 @@ uint32_t StreamManager::SdStream::read(void *data, uint32_t len) {
     if (pos_ < kHeaderBytes) return copied;
   }
 
+  const uint32_t dataPos = pos_ - kHeaderBytes;
+  if (dataPos < headBytes_) {
+    const uint32_t bytes = minU32(len - copied, headBytes_ - dataPos);
+    memcpy(out + copied, head_ + dataPos, bytes);
+    copied += bytes;
+    pos_ += bytes;
+    if (copied == len) return copied;
+  }
+
   const uint32_t remaining = dataBytes_ - (pos_ - kHeaderBytes);
   const uint32_t consumed = consumed_.load();
   const uint32_t available = written_.load() - consumed;
@@ -71,7 +80,8 @@ bool StreamManager::SdStream::ready() const {
   if (failed_.load()) return false;
   const uint32_t dataPos = pos_ > kHeaderBytes ? pos_ - kHeaderBytes : 0;
   const uint32_t needed = minU32(kReadyBytes, dataBytes_ - dataPos);
-  return written_.load() - consumed_.load() >= needed;
+  const uint32_t fromHead = dataPos < headBytes_ ? headBytes_ - dataPos : 0;
+  return fromHead + (written_.load() - consumed_.load()) >= needed;
 }
 
 void StreamManager::SdStream::release() {
@@ -126,7 +136,10 @@ bool StreamManager::startReaderTask(uint8_t priority, int core) {
   return true;
 }
 
-StreamManager::SdStream *StreamManager::openStream(const char *path, bool loop) {
+StreamManager::SdStream *StreamManager::openStream(const char *path,
+                                                   bool loop,
+                                                   const uint8_t *head,
+                                                   uint32_t headBytes) {
   if (!catalog_ || !ringMemory_ || !path) return nullptr;
   const int index = SampleLibrary::findIndexByPath(*catalog_, path);
   if (!catalog_->playable(index)) return nullptr;
@@ -140,6 +153,8 @@ StreamManager::SdStream *StreamManager::openStream(const char *path, bool loop) 
     strcpy(stream.path_, path);
     stream.fileDataOffset_ = info.dataOffset;
     stream.dataBytes_ = info.dataBytes;
+    stream.head_ = head;
+    stream.headBytes_ = head ? minU32(headBytes, info.dataBytes) : 0;
     WavValidation::pcmHeader(stream.header_, info.dataBytes);
     stream.pos_ = 0;
     stream.loop_.store(loop);
@@ -204,11 +219,11 @@ bool StreamManager::serviceOnce() {
 
 bool StreamManager::openFile(SdStream &stream) {
   stream.file_ = SD.open(stream.path_);
-  stream.readerDataPos_ = 0;
+  stream.readerDataPos_ = stream.headBytes_;
   if (!stream.file_) return false;
   // The validation cache may be stale if the card changed since boot.
   if (stream.file_.size() < stream.fileDataOffset_ + stream.dataBytes_) return false;
-  return stream.file_.seek(stream.fileDataOffset_);
+  return stream.file_.seek(stream.fileDataOffset_ + stream.headBytes_);
 }
 
 void StreamManager::closeFile(SdStream &stream) {
@@ -223,15 +238,17 @@ bool StreamManager::fillOnce() {
   bool worked = false;
   for (SdStream &stream : streams_) {
     if (stream.state_.load() != SdStream::State::Streaming || stream.failed_.load()) continue;
+    // A head covering the whole sample leaves nothing to read.
+    if (stream.headBytes_ >= stream.dataBytes_) continue;
     if (stream.readerDataPos_ >= stream.dataBytes_) {
       if (!stream.loop_.load()) continue;
       // Loops continue straight into the next iteration, so a restart
-      // finds PCM already buffered.
-      if (!stream.file_.seek(stream.fileDataOffset_)) {
+      // finds PCM already buffered. The head replays from RAM.
+      if (!stream.file_.seek(stream.fileDataOffset_ + stream.headBytes_)) {
         stream.failed_.store(true);
         continue;
       }
-      stream.readerDataPos_ = 0;
+      stream.readerDataPos_ = stream.headBytes_;
       worked = true;
     }
     const uint32_t buffered = stream.written_.load() - stream.consumed_.load();

@@ -23,6 +23,7 @@ void resetReport(SampleClassifier::ClassificationReport &report) {
     report.items[i].dataOffset = 0;
     report.items[i].durationSeconds = 0.0f;
     report.items[i].mode = SampleClassifier::StorageMode::ReadError;
+    report.items[i].headBytes = 0;
   }
 
   report.itemCount = 0;
@@ -90,13 +91,28 @@ void classifyAssignedSamples(const SettingsStore::SamplerSettings &settings,
     }
   }
 
-  // Streaming blocks the audio task on SD reads, so preload as many samples
-  // as the budget allows. Shortest first leaves the fewest samples on SD.
+  // Reserve the start of every sample first: whichever of them end up
+  // streaming then start from RAM. Skip heads if even they do not fit.
+  uint32_t headTotal = 0;
+  for (int i = 0; i < candidateCount; i++) {
+    const AssignedSampleClassification &item = report.items[candidates[i]];
+    headTotal += item.dataBytes < kStreamHeadBytes ? item.dataBytes : kStreamHeadBytes;
+  }
+  const bool useHeads = headTotal <= report.sampleRamBudgetBytes;
+  if (useHeads) report.sampleRamUsedBytes = headTotal;
+
+  // Preload as many whole samples as the budget allows; each costs only what
+  // its reserved head does not cover. Shortest first leaves the fewest on SD.
   for (int i = 0; i < candidateCount; i++) {
     AssignedSampleClassification &item = report.items[candidates[i]];
-    if (item.dataBytes <= report.sampleRamBudgetBytes - report.sampleRamUsedBytes) {
+    const uint32_t head = useHeads ? (item.dataBytes < kStreamHeadBytes ? item.dataBytes
+                                                                       : kStreamHeadBytes)
+                                   : 0;
+    if (item.dataBytes - head <= report.sampleRamBudgetBytes - report.sampleRamUsedBytes) {
       item.mode = StorageMode::Ram;
-      report.sampleRamUsedBytes += item.dataBytes;
+      report.sampleRamUsedBytes += item.dataBytes - head;
+    } else {
+      item.headBytes = head;
     }
   }
 
@@ -111,6 +127,7 @@ void classifyAssignedSamples(const SettingsStore::SamplerSettings &settings,
       item.dataOffset = existing.dataOffset;
       item.durationSeconds = existing.durationSeconds;
       item.mode = existing.mode;
+      item.headBytes = existing.headBytes;
     }
 
     switch (item.mode) {

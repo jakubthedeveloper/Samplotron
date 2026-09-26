@@ -274,6 +274,8 @@ bool beginVoiceFromStream(EngineState *impl,
 bool beginVoiceFromPath(EngineState *impl,
                         int voiceIndex,
                         const String &samplePath,
+                        const uint8_t *head,
+                        uint32_t headBytes,
                         uint8_t volume,
                         int16_t retriggerGroupId,
                         bool loopEnabled,
@@ -282,7 +284,8 @@ bool beginVoiceFromPath(EngineState *impl,
 
   VoiceState &voice = impl->voices[voiceIndex];
   if (!voice.wav || !voice.stub || !voice.budgetedOut) return false;
-  StreamManager::SdStream *stream = impl->streamManager.openStream(samplePath.c_str(), loopEnabled);
+  StreamManager::SdStream *stream =
+      impl->streamManager.openStream(samplePath.c_str(), loopEnabled, head, headBytes);
   if (!stream) return false;
   return beginVoiceFromStream(
       impl, voiceIndex, stream, samplePath, volume, retriggerGroupId, loopEnabled, fadeInUs);

@@ -46,10 +46,14 @@ class Audio {
   // Moves SD streaming reads to their own task. Until then, update() reads.
   bool startStreamReader(uint8_t priority, int core);
   void update();
+  // head/headBytes: optional preloaded start of the file's PCM, played from
+  // RAM while the SD reader catches up.
   void playSamplePath(const String &samplePath,
                       uint8_t volume = 100,
                       int16_t retriggerGroupId = -1,
-                      bool loopEnabled = false);
+                      bool loopEnabled = false,
+                      const uint8_t *head = nullptr,
+                      uint32_t headBytes = 0);
   void stopAllVoices();
   void fadeOutAllVoices(uint32_t fadeOutUs);
   void stopLoopingVoicesForGroup(int16_t retriggerGroupId);

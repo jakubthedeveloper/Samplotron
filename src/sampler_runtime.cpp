@@ -149,13 +149,14 @@ void SamplerRuntime::classifyAssignedSamplesAndLog() {
 void SamplerRuntime::loadClassifiedRamSamplesAndLog() {
   const uint32_t startMs = millis();
   SampleRamManager::prepare(settings_, classificationReport_, ramLoadReport_);
-  Serial.printf("RAM: %d samples loaded (%lu of %lu KiB) in %lu ms, %d streamed from SD, "
-                "%d failed to load\n",
+  Serial.printf("RAM: %d samples loaded (%lu of %lu KiB) in %lu ms, %d streamed from SD "
+                "(%d with preloaded start), %d failed to load\n",
                 ramLoadReport_.loadedRamCount,
                 static_cast<unsigned long>(ramLoadReport_.usedBytes / 1024U),
                 static_cast<unsigned long>(ramLoadReport_.effectiveBudgetBytes / 1024U),
                 static_cast<unsigned long>(millis() - startMs),
                 classificationReport_.streamSampleCount + ramLoadReport_.fallbackToStreamCount,
+                ramLoadReport_.loadedHeadCount,
                 ramLoadReport_.readErrorCount);
 }
 

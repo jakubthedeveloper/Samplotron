@@ -180,6 +180,8 @@ int allocateVoiceSlot(EngineState *impl, int16_t retriggerGroupId, bool &voiceWa
 bool beginVoiceFromPath(EngineState *impl,
                         int voiceIndex,
                         const String &samplePath,
+                        const uint8_t *head,
+                        uint32_t headBytes,
                         uint8_t volume,
                         int16_t retriggerGroupId,
                         bool loopEnabled,

@@ -31,8 +31,9 @@ class StreamManager {
   };
 
   // Decoder-facing view of one stream: a canonical 44-byte WAV header from
-  // memory, then PCM from the ring. Owned by StreamManager, borrowed by one
-  // voice from openStream() until release().
+  // memory, then an optional preloaded head of the PCM from RAM, then PCM
+  // from the ring. Owned by StreamManager, borrowed by one voice from
+  // openStream() until release().
   class SdStream : public AudioFileSource {
    public:
     uint32_t read(void *data, uint32_t len) override;
@@ -61,6 +62,8 @@ class StreamManager {
     char path_[128] = {0};
     uint32_t fileDataOffset_ = 0;
     uint32_t dataBytes_ = 0;
+    const uint8_t *head_ = nullptr;  // First headBytes_ of PCM, in RAM.
+    uint32_t headBytes_ = 0;
     uint8_t header_[kHeaderBytes] = {0};
     StreamManager *owner_ = nullptr;
     // Shared between tasks.
@@ -82,13 +85,18 @@ class StreamManager {
 
   bool begin(const SampleLibrary::Catalog *catalog);
   void shutdown();
-  // Moves SD access to a task on another core. Before this, service() must
-  // be called by whoever reads the streams.
+  // Moves SD access to a task on another core. Before this, serviceAll()
+  // must be called by whoever reads the streams.
   bool startReaderTask(uint8_t priority, int core);
   bool hasReaderTask() const { return readerTask_ != nullptr; }
 
   // Claims a stream for a validated catalog sample; the reader opens it.
-  SdStream *openStream(const char *path, bool loop);
+  // With a preloaded head, the reader starts after it and playback can
+  // begin before any SD data arrives; loops replay the head from RAM.
+  SdStream *openStream(const char *path,
+                       bool loop,
+                       const uint8_t *head = nullptr,
+                       uint32_t headBytes = 0);
   // Performs all pending reader work (host tests / no reader task).
   void serviceAll();
   void noteStarvedUpdate() { diagnostics_.starvedUpdateCount++; }

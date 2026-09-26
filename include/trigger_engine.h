@@ -23,6 +23,9 @@ struct TriggerEvent {
   int16_t retriggerGroupId = -1;
   bool loopEnabled = false;
   char path[128] = {0};
+  // StreamPath only: preloaded start of the sample, played while SD catches up.
+  const uint8_t *streamHead = nullptr;
+  uint32_t streamHeadBytes = 0;
 
   const uint8_t *ramData = nullptr;
   uint32_t ramDataBytes = 0;
