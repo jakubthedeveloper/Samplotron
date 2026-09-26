@@ -304,6 +304,18 @@ uint32_t Audio::voiceStealCount() const {
   return impl_->stats.voiceStealCount;
 }
 
+Audio::StreamingDiagnostics Audio::streamingDiagnostics() const {
+  StreamingDiagnostics diagnostics;
+  if (!impl_) return diagnostics;
+  if (impl_->out) diagnostics.i2sUnderrunCount = impl_->out->underrunCount();
+  const StreamManager::Diagnostics &sd = impl_->streamManager.diagnostics();
+  diagnostics.sdReadCount = sd.sourceReadCount;
+  diagnostics.sdSlowReadCount = sd.sourceSlowReadCount;
+  diagnostics.sdMaxReadUs = sd.sourceMaxReadUs;
+  diagnostics.sdMaxReadBytes = sd.sourceMaxReadBytes;
+  return diagnostics;
+}
+
 bool Audio::waveformSnapshot(WaveformSnapshot &snapshot) const {
   if (!impl_) {
     snapshot.validPoints = 0;

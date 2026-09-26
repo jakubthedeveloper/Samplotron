@@ -38,6 +38,7 @@ class SamplerApp {
   void processLoaderCommand(const LoaderCommand &command);
   void runLoaderTask();
   void runUiTask();
+  void logStreamingDiagnostics();
 
   Audio audio_;
   Input input_;
@@ -55,4 +56,6 @@ class SamplerApp {
   QueueHandle_t uiStatusQueue_ = nullptr;
   TaskHandle_t loaderTaskHandle_ = nullptr;
   TaskHandle_t uiTaskHandle_ = nullptr;
+  Audio::StreamingDiagnostics loggedDiagnostics_;
+  uint32_t lastSdReadCount_ = 0;
 };

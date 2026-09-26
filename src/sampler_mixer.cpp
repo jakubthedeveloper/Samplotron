@@ -96,27 +96,46 @@ bool SamplerMixer::emit(float left, float right) {
   return true;
 }
 
+int SamplerMixer::queued(int id) const {
+  // Wrap-safe: positions are absolute frame counters.
+  const int32_t ahead = static_cast<int32_t>(written_[id] - emitted_);
+  return ahead > 0 ? ahead : 0;
+}
+
 bool SamplerMixer::loop() {
   if (!mix_ || !sinkStarted_) return false;
-  for (;;) {
-    for (int i = 0; i < kMaxInputs; ++i) {
-      if (running_[i] && queued_[i] == 0) return true;
-    }
+  // A frame is final once every running input has written it. Scan inputs once
+  // per call, not once per consumed sample.
+  int ready = -1;
+  for (int i = 0; i < kMaxInputs; ++i) {
+    if (!running_[i]) continue;
+    const int count = queued(i);
+    if (ready < 0 || count < ready) ready = count;
+  }
+  // With no running writers, continue flushing tails and then digital silence.
+  while (ready != 0) {
     if (!emit(mix_[read_].left, mix_[read_].right)) return true;
     mix_[read_] = {};
     read_ = (read_ + 1) % capacity_;
-    for (int &count : queued_) if (count > 0) --count;
-    // With no running writers, continue flushing tails and then digital silence.
+    ++emitted_;
+    if (ready > 0) --ready;
   }
+  return true;
 }
 bool SamplerMixer::consume(int id, float left, float right) {
   if (!running_[id]) return false;
-  loop();
-  if (queued_[id] >= capacity_ - 1) return false;
-  Frame &frame = mix_[(read_ + queued_[id]) % capacity_];
+  int count = queued(id);
+  // Emission normally happens once per Audio::update(); only a full queue
+  // forces it here.
+  if (count >= capacity_ - 1) {
+    loop();
+    count = queued(id);
+    if (count >= capacity_ - 1) return false;
+  }
+  Frame &frame = mix_[(read_ + count) % capacity_];
   frame.left += left;
   frame.right += right;
-  ++queued_[id];
+  written_[id] = emitted_ + count + 1;
   return true;
 }
 

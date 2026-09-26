@@ -16,6 +16,16 @@ class Audio {
     uint32_t voiceStealCount = 0;
   };
 
+  // Cumulative counters for diagnosing playback that cannot keep up. Safe to
+  // poll from another task; values may be a few updates stale.
+  struct StreamingDiagnostics {
+    uint32_t i2sUnderrunCount = 0;
+    uint32_t sdReadCount = 0;
+    uint32_t sdSlowReadCount = 0;
+    uint32_t sdMaxReadUs = 0;
+    uint32_t sdMaxReadBytes = 0;
+  };
+
   struct WaveformSnapshot {
     int8_t points[kWaveformPointCount] = {0};
     uint16_t validPoints = 0;
@@ -47,6 +57,7 @@ class Audio {
                      bool loopEnabled = false);
   RuntimeStats runtimeStats() const;
   uint32_t voiceStealCount() const;
+  StreamingDiagnostics streamingDiagnostics() const;
   bool waveformSnapshot(WaveformSnapshot &snapshot) const;
 
  private:

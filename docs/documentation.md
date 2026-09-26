@@ -396,7 +396,7 @@ The repository workflow runs native tests and builds the main firmware. Pushes t
 
 `pio test -e native` covers UI navigation, sample/panic learning, keypad mapping, saving state, and playback routing, including RAM-to-stream fallback and loop control. The `test_audio_playback` suite additionally runs the real WAV decoder, voice engine, source adapters, budgeted fades and mixer against simulated SD/I2S hardware. It compares sample timelines, tests 2/8/32 overlapping voices at high levels, and includes negative controls for missing, repeated, zeroed and spiked PCM. See [coverage and limits](audio-regression.md). Host tests do not measure ESP32 deadlines, actual SD throughput or analog output.
 
-Main firmware serial output includes keypad diagnostics, WAV rejection reasons and codec volume-register verification at boot. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
+Main firmware serial output includes keypad diagnostics, WAV rejection reasons and codec volume-register verification at boot. It also reports the SD SPI clock the card mounted at (20 MHz, falling back to 10 or 4 MHz). During playback, a line starting with `Audio:` appears in any second with new I2S underruns or SD reads slower than 3 ms. Underruns make the DMA replay stale blocks, heard as stutter and stretched-sounding playback; a quiet log means playback kept up. For encoder or MIDI diagnostics, upload the corresponding debug environment and open the monitor at 115200 baud. These are separate applications; upload the main environment again to resume sampling.
 
 ## 10. Module Map (Code Orientation)
 

@@ -140,6 +140,23 @@ bool FreshStartAudioGeneratorWAV::stop() {
 StableAudioOutputI2S::StableAudioOutputI2S(int port, int outputMode, int dmaCount, int useApll)
     : AudioOutputI2S(port, outputMode, dmaCount, useApll) {}
 
+bool StableAudioOutputI2S::begin() {
+  if (!AudioOutputI2S::begin()) return false;
+#ifdef ESP32
+  // Callbacks can be registered only while the channel is disabled. The codec
+  // is still muted when the mixer first starts this sink.
+  i2s_event_callbacks_t callbacks = {};
+  callbacks.on_send_q_ovf = onSendQueueOverflow;
+  if (i2s_channel_disable(_tx_handle) == ESP_OK) {
+    i2s_channel_register_event_callback(_tx_handle, &callbacks, this);
+    i2sOn = (i2s_channel_enable(_tx_handle) == ESP_OK);
+  }
+  return i2sOn;
+#else
+  return true;
+#endif
+}
+
 bool StableAudioOutputI2S::SetRate(int hz) {
   rateSetCalls_++;
   if (lastRateHz_ == hz) {
@@ -159,6 +176,16 @@ size_t StableAudioOutputI2S::writeBlock(void *context, const uint8_t *data, size
   // Preserve partial writes even when the API reports a timeout.
   i2s_channel_write(self->_tx_handle, data, bytes, &written, 0);
   return written;
+}
+
+bool IRAM_ATTR StableAudioOutputI2S::onSendQueueOverflow(i2s_chan_handle_t,
+                                                         i2s_event_data_t *,
+                                                         void *context) {
+  // The DMA finished every queued block before the next write arrived, so it
+  // replays stale data: audible as stutter and apparent time stretching.
+  auto *self = static_cast<StableAudioOutputI2S *>(context);
+  self->underrunCount_ = self->underrunCount_ + 1;
+  return false;
 }
 #endif
 
@@ -183,6 +210,8 @@ uint32_t StableAudioOutputI2S::rateSetCalls() const { return rateSetCalls_; }
 uint32_t StableAudioOutputI2S::skippedRateSetCalls() const { return skippedRateSetCalls_; }
 
 uint32_t StableAudioOutputI2S::appliedRateSetCalls() const { return appliedRateSetCalls_; }
+
+uint32_t StableAudioOutputI2S::underrunCount() const { return underrunCount_; }
 
 WaveformAudioOutput::WaveformAudioOutput(AudioOutput *sink,
                                                    WaveformCaptureState *waveformCapture)

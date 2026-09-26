@@ -171,6 +171,31 @@ void SamplerApp::renderBootScreen(bool loading) {
 
 void SamplerApp::loop() {
   vTaskDelay(pdMS_TO_TICKS(1000));
+  logStreamingDiagnostics();
+}
+
+void SamplerApp::logStreamingDiagnostics() {
+  // Report only new underruns or slow SD reads, so a quiet log means playback
+  // kept up during the last second.
+  const Audio::StreamingDiagnostics now = audio_.streamingDiagnostics();
+  const Audio::StreamingDiagnostics &last = loggedDiagnostics_;
+  const uint32_t sdReadsPerSecond = now.sdReadCount - lastSdReadCount_;
+  lastSdReadCount_ = now.sdReadCount;
+  if (now.i2sUnderrunCount == last.i2sUnderrunCount &&
+      now.sdSlowReadCount == last.sdSlowReadCount) {
+    return;
+  }
+  Serial.printf("Audio: +%lu I2S underruns (total %lu), +%lu slow SD reads (total %lu), "
+                "%lu decoder SD reads/s, max read %lu us for %lu B, SD %lu Hz\n",
+                static_cast<unsigned long>(now.i2sUnderrunCount - last.i2sUnderrunCount),
+                static_cast<unsigned long>(now.i2sUnderrunCount),
+                static_cast<unsigned long>(now.sdSlowReadCount - last.sdSlowReadCount),
+                static_cast<unsigned long>(now.sdSlowReadCount),
+                static_cast<unsigned long>(sdReadsPerSecond),
+                static_cast<unsigned long>(now.sdMaxReadUs),
+                static_cast<unsigned long>(now.sdMaxReadBytes),
+                static_cast<unsigned long>(StorageSD::spiFrequencyHz()));
+  loggedDiagnostics_ = now;
 }
 
 void SamplerApp::uiTaskEntry(void *param) {
