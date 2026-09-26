@@ -34,9 +34,12 @@ bool readsAreStable() {
   const uint32_t count =
       sectorCount < kVerifySectorCount ? static_cast<uint32_t>(sectorCount) : kVerifySectorCount;
   for (uint32_t sector = 0; sector < count; ++sector) {
-    if (!SD.readRAW(first, sector) || !SD.readRAW(second, sector) ||
-        memcmp(first, second, kSectorBytes) != 0) {
-      Serial.printf("SD: unstable read of sector %lu\n", static_cast<unsigned long>(sector));
+    const bool firstOk = SD.readRAW(first, sector);
+    const bool secondOk = firstOk && SD.readRAW(second, sector);
+    if (!secondOk || memcmp(first, second, kSectorBytes) != 0) {
+      Serial.printf("SD: unstable read of sector %lu (%s)\n", static_cast<unsigned long>(sector),
+                    !firstOk ? "first read failed" : !secondOk ? "second read failed"
+                                                          : "data mismatch");
       return false;
     }
   }
@@ -59,8 +62,11 @@ bool init() {
     const bool slowest = (i + 1 == kFrequencyCount);
     if (SD.begin(Pins::SD_CS, SPI, frequencyHz, "/sd", kMaxOpenFiles)) {
       // The slowest clock is the previous known-good baseline; keep it even
-      // if verification fails, as before this check existed.
-      if (slowest || readsAreStable()) {
+      // if verification fails, as before this check existed. Still run the
+      // check there: failing at every clock points at the check, not wiring.
+      const bool stable = readsAreStable();
+      if (stable || slowest) {
+        if (!stable) Serial.println("SD: verification failed at the slowest clock too");
         mountedFrequencyHz = frequencyHz;
         Serial.printf("SD: mounted at %lu Hz\n", static_cast<unsigned long>(frequencyHz));
         return true;

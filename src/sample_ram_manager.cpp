@@ -2,6 +2,8 @@
 
 #include <SD.h>
 #include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,6 +95,9 @@ bool readFileRangeToBuffer(const String &path, uint32_t offset, uint32_t size, u
       return false;
     }
     totalRead += static_cast<uint32_t>(readNow);
+    // SPI SD transfers busy-wait. Loading several MiB would otherwise keep
+    // this core from IDLE long enough to trip the task watchdog.
+    vTaskDelay(1);
   }
 
   file.close();
