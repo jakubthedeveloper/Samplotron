@@ -42,7 +42,7 @@ void loadFromSd(Catalog &catalog, ValidationProgress progress, void *context) {
 
   File dir = SD.open("/samples");
   if (!dir || !dir.isDirectory()) {
-    
+    Serial.println(!dir ? "Samples: cannot open /samples" : "Samples: /samples is not a directory");
     return;
   }
 
@@ -63,6 +63,7 @@ void loadFromSd(Catalog &catalog, ValidationProgress progress, void *context) {
     entry.close();
   }
   dir.close();
+  Serial.printf("Samples: found %d WAV files in /samples\n", catalog.count);
 
   sortByName(catalog);
   if (progress) progress(context);
